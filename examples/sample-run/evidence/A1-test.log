@@ -1,0 +1,12 @@
+$ npm test -- auth
+
+> example-app@1.0.0 test
+> node --test tests/auth.test.js
+
+✔ rejects unknown user with 401 (12.204ms)
+✔ rejects bad password with 401 (4.118ms)
+✔ accepts valid credentials with 200 (3.552ms)
+ℹ tests 3
+ℹ pass 3
+ℹ fail 0
+✔ exit 0

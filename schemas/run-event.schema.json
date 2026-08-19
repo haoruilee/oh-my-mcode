@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/haoruilee/oh-my-mcode/schemas/run-event.schema.json",
+  "title": "Oh My MiniMax Code run event",
+  "description": "One append-only event in <workspace>/.minimax/runs/<run_id>/events.jsonl",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "ts", "type", "run_id"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[A-Za-z0-9]+$",
+      "description": "Stable event id assigned by the run store."
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC timestamp when the event was appended."
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "run_created",
+        "phase_changed",
+        "task_started",
+        "task_completed",
+        "tool_called",
+        "test_ran",
+        "finding_emitted",
+        "repair_requested",
+        "run_accepted",
+        "run_rejected",
+        "run_resumed"
+      ]
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^run_[A-Za-z0-9]+$"
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "INTAKE",
+        "DISCOVER",
+        "PLAN",
+        "PLAN_REVIEW",
+        "EXECUTE",
+        "VERIFY",
+        "REPAIR",
+        "ACCEPT",
+        "RELEASE"
+      ]
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

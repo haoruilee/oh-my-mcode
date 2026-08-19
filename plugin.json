@@ -1,0 +1,13 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "oh-my-mcode",
+  "version": "0.1.0",
+  "description": "Verified engineering mode for MiniMax Code: plan, build, independently verify, and ship with evidence.",
+  "author": {
+    "name": "haoruilee"
+  },
+  "homepage": "https://github.com/haoruilee/oh-my-mcode",
+  "repository": "https://github.com/haoruilee/oh-my-mcode",
+  "license": "MIT",
+  "keywords": ["minimax", "mcode", "verified", "workflow"]
+}

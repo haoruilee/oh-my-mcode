@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/haoruilee/oh-my-mcode/schemas/task-contract.schema.json",
+  "title": "Oh My MiniMax Code task DAG",
+  "description": "tasks.json: a directed acyclic task graph plus acceptance criteria for one run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id", "tasks", "acceptance"],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "pattern": "^run_[A-Za-z0-9]+$"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "role", "status", "depends_on"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^T[0-9]+$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "role": {
+            "type": "string",
+            "enum": ["explorer", "planner", "builder", "verifier", "release"]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "in_progress", "done", "blocked", "cancelled"]
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^T[0-9]+$"
+            }
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "acceptance": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "criterion"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^A[0-9]+$"
+          },
+          "criterion": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["test", "build", "diff", "manual", "diagnostic"]
+          },
+          "command": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

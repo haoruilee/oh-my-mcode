@@ -1,0 +1,12 @@
+.DS_Store
+Thumbs.db
+*.log
+!examples/sample-run/evidence/*.log
+*.tmp
+*.swp
+node_modules/
+dist/
+.minimax/runs/
+.idea/
+.vscode/
+*.pid

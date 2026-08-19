@@ -1,0 +1,17 @@
+# Documentation only. Not a host slash command.
+id: verify
+kind: skill-workflow
+entry:
+  tui: "re-verify this run"
+  not_a_slash_command: true
+phases:
+  - VERIFY
+  - ACCEPT
+  - REPAIR
+rules:
+  no_product_edits: true
+  deterministic_first: true
+  llm_judge_optional_read_only: true
+  accepted_requires_evidence_files: true
+  only_this_workflow_sets_verdict: true
+store: <workspace>/.minimax/runs/<run_id>/

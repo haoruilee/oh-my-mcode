@@ -1,0 +1,16 @@
+# Documentation only. Not a host slash command. Host /plan already exists; we coexist.
+id: plan
+kind: skill-workflow
+entry:
+  tui: "make a verified plan for <goal>"
+  not_a_slash_command: true
+  coexist_with: ["/plan"]
+phases:
+  - INTAKE
+  - DISCOVER
+  - PLAN
+  - PLAN_REVIEW
+rules:
+  no_product_edits: true
+  stop_after: PLAN_REVIEW
+store: <workspace>/.minimax/runs/<run_id>/
