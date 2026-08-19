@@ -1,0 +1,21 @@
+{
+  "run_id": "run_01K3H7WQ0R8SAMPLEAUTH",
+  "verdict": "accepted",
+  "checked_at": "2026-08-20T12:18:22.000Z",
+  "summary": "Deterministic checks passed: npm test -- auth",
+  "acceptance": [
+    {
+      "id": "A1",
+      "criterion": "npm test -- auth exits 0",
+      "result": "pass",
+      "evidence": ["evidence/A1-test.log"]
+    },
+    {
+      "id": "A2",
+      "criterion": "Auth mismatch responses use HTTP 401",
+      "result": "pass",
+      "evidence": ["evidence/A1-test.log"]
+    }
+  ],
+  "findings": []
+}

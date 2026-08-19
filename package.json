@@ -1,0 +1,61 @@
+{
+  "name": "oh-my-mcode",
+  "version": "0.1.0",
+  "description": "Verified engineering mode for MiniMax Code: plan, build, independently verify, and ship with evidence.",
+  "type": "module",
+  "bin": {
+    "oh-my-mcode": "bin/oh-my-mcode.mjs",
+    "omm": "bin/oh-my-mcode.mjs"
+  },
+  "main": "./dist/cli.js",
+  "exports": {
+    ".": "./dist/cli.js",
+    "./store": "./dist/store.js",
+    "./orchestrator": "./dist/orchestrator.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "src",
+    "skills",
+    "agents",
+    "schemas",
+    "scripts",
+    "workflows",
+    "docs",
+    "examples",
+    ".minimax-plugin",
+    "plugin.json",
+    "icon.png",
+    "LICENSE",
+    "README.md",
+    "README.zh-CN.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.json && node --test test/*.test.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "omm": "node bin/oh-my-mcode.mjs"
+  },
+  "keywords": [
+    "minimax",
+    "mcode",
+    "verified",
+    "workflow"
+  ],
+  "author": "haoruilee",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/haoruilee/oh-my-mcode.git"
+  },
+  "homepage": "https://github.com/haoruilee/oh-my-mcode",
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "typescript": "^5.7.3"
+  }
+}

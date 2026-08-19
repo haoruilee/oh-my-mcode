@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "name": "oh-my-mcode",
+  "displayName": "Oh My MiniMax Code",
+  "version": "0.1.0",
+  "description": "Verified engineering mode for MiniMax Code: plan, build, independently verify, and ship with evidence.",
+  "author": "haoruilee",
+  "icon": "icon.png",
+  "category": "Developer Tools",
+  "exampleQueries": [
+    "Max mode: fix the failing auth tests and prove they pass",
+    "Make a plan only for migrating this module to Postgres",
+    "Re-verify the current run against its acceptance criteria"
+  ],
+  "apps": [],
+  "mcpServers": [],
+  "skills": [
+    "skills/max/SKILL.md",
+    "skills/plan/SKILL.md",
+    "skills/verify/SKILL.md",
+    "skills/resume/SKILL.md",
+    "skills/doctor/SKILL.md"
+  ]
+}

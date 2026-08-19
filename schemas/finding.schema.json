@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/haoruilee/oh-my-mcode/schemas/finding.schema.json",
+  "title": "Oh My MiniMax Code verifier findings",
+  "description": "findings.json: independent verifier output. Only the verify skill may write this file and set Accepted or Rejected.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id", "verdict", "checked_at", "summary", "acceptance", "findings"],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "pattern": "^run_[A-Za-z0-9]+$"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["accepted", "rejected"]
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "acceptance": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "criterion", "result"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^A[0-9]+$"
+          },
+          "criterion": {
+            "type": "string",
+            "minLength": 1
+          },
+          "result": {
+            "type": "string",
+            "enum": ["pass", "fail", "untested"]
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "severity", "title", "detail"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^F[0-9]+$"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["blocker", "major", "minor", "note"]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "detail": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

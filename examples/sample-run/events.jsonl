@@ -1,0 +1,16 @@
+{"id":"evt_01K3H7CREATE00001","ts":"2026-08-20T12:00:00.000Z","type":"run_created","run_id":"run_01K3H7WQ0R8SAMPLEAUTH","phase":"INTAKE","payload":{"goal":"Fix the failing auth tests and prove they pass"}}
+{"id":"evt_01K3H7PHASE00002","ts":"2026-08-20T12:01:00.000Z","type":"phase_changed","run_id":"run_01K3H7WQ0R8SAMPLEAUTH","phase":"DISCOVER","payload":{"from":"INTAKE","to":"DISCOVER","status":"active"}}
+{"id":"evt_01K3H7TOOL000003","ts":"2026-08-20T12:02:00.000Z","type":"tool_called","run_id":"run_01K3H7WQ0R8SAMPLEAUTH","phase":"DISCOVER","payload":{"tool":"grep","query":"verifyPassword"}}
+{"id":"evt_01K3H7PHASE00004","ts":"2026-08-20T12:04:00.000Z","type":"phase_changed","run_id":"run_01K3H7WQ0R8SAMPLEAUTH","phase":"PLAN","payload":{"from":"DISCOVER","to":"PLAN","status":"active"}}
+{"id":"evt_01K3H7PHASE00005","ts":"2026-08-20T12:06:00.000Z","type":"phase_changed","run_id":"run_01K3H7WQ0R8SAMPLEAUTH","phase":"PLAN_REVIEW","payload":{"from":"PLAN","to":"PLAN_REVIEW","status":"active"}}
+{"id":"evt_01K3H7TASKS00006","ts":"2026-08-20T12:08:00.000Z","type":"task_started","run_id":"run_01K3H7WQ0R8SAMPLEAUTH","phase":"EXECUTE","task_id":"T2","payload":{"title":"Return 401 on invalid credentials instead of throwing"}}
+{"id":"evt_01K3H7TASKC00007","ts":"2026-08-20T12:12:00.000Z","type":"task_completed","run_id":"run_01K3H7WQ0R8SAMPLEAUTH","phase":"EXECUTE","task_id":"T2","payload":{"title":"Return 401 on invalid credentials instead of throwing"}}
+{"id":"evt_01K3H7TESTR00008","ts":"2026-08-20T12:13:00.000Z","type":"test_ran","run_id":"run_01K3H7WQ0R8SAMPLEAUTH","phase":"VERIFY","payload":{"command":"npm test -- auth","exit_code":1}}
+{"id":"evt_01K3H7FIND000009","ts":"2026-08-20T12:13:30.000Z","type":"finding_emitted","run_id":"run_01K3H7WQ0R8SAMPLEAUTH","phase":"REPAIR","payload":{"verdict":"rejected","finding_count":1}}
+{"id":"evt_01K3H7REJ0000010","ts":"2026-08-20T12:13:30.000Z","type":"run_rejected","run_id":"run_01K3H7WQ0R8SAMPLEAUTH","phase":"REPAIR","payload":{"summary":"Got 403, expected 401"}}
+{"id":"evt_01K3H7REPAIR0011","ts":"2026-08-20T12:13:31.000Z","type":"repair_requested","run_id":"run_01K3H7WQ0R8SAMPLEAUTH","phase":"REPAIR","payload":{"task_id":"T4"}}
+{"id":"evt_01K3H7TASKS00012","ts":"2026-08-20T12:14:00.000Z","type":"task_started","run_id":"run_01K3H7WQ0R8SAMPLEAUTH","phase":"EXECUTE","task_id":"T4","payload":{"title":"Repair: status code must be 401 not 403"}}
+{"id":"evt_01K3H7TASKC00013","ts":"2026-08-20T12:17:00.000Z","type":"task_completed","run_id":"run_01K3H7WQ0R8SAMPLEAUTH","phase":"EXECUTE","task_id":"T4","payload":{}}
+{"id":"evt_01K3H7TESTR00014","ts":"2026-08-20T12:18:10.000Z","type":"test_ran","run_id":"run_01K3H7WQ0R8SAMPLEAUTH","phase":"VERIFY","payload":{"command":"npm test -- auth","exit_code":0}}
+{"id":"evt_01K3H7FIND000015","ts":"2026-08-20T12:18:22.000Z","type":"finding_emitted","run_id":"run_01K3H7WQ0R8SAMPLEAUTH","phase":"ACCEPT","payload":{"verdict":"accepted","finding_count":0}}
+{"id":"evt_01K3H7ACCEPT0016","ts":"2026-08-20T12:18:22.000Z","type":"run_accepted","run_id":"run_01K3H7WQ0R8SAMPLEAUTH","phase":"ACCEPT","payload":{"summary":"Deterministic checks passed: npm test -- auth"}}

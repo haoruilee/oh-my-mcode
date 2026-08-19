@@ -1,0 +1,20 @@
+{
+  "run_id": "run_01K3H7WQ0R8SAMPLEAUTH",
+  "items": [
+    {
+      "id": "E1",
+      "kind": "test",
+      "path": "evidence/A1-test.log",
+      "command": "npm test -- auth",
+      "exit_code": 0,
+      "recorded_at": "2026-08-20T12:18:10.000Z"
+    },
+    {
+      "id": "E2",
+      "kind": "diff",
+      "path": "evidence/auth.diff",
+      "recorded_at": "2026-08-20T12:17:40.000Z",
+      "notes": "src/auth.js only"
+    }
+  ]
+}

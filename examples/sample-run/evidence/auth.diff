@@ -1,0 +1,12 @@
+--- a/src/auth.js
++++ b/src/auth.js
+@@ -14,8 +14,8 @@ export function handleLogin(req, res) {
+   const user = users.find((row) => row.name === req.body.user);
+   if (!user || !verifyPassword(user, req.body.password)) {
+-    throw new Error("invalid credentials");
++    res.statusCode = 401;
++    return res.end(JSON.stringify({ error: "invalid_credentials" }));
+   }
+   res.statusCode = 200;
+   res.end(JSON.stringify({ ok: true }));
+ }

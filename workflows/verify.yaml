@@ -1,0 +1,17 @@
+# Documentation only. Not a host slash command.
+id: verify
+kind: skill-and-cli-workflow
+entry:
+  cli: oh-my-mcode verify [run_id]
+  tui: "re-verify the current run against its acceptance criteria"
+phases:
+  - VERIFY
+  - ACCEPT
+  - REPAIR
+rules:
+  no_product_edits: true
+  deterministic_first: true
+  llm_judge_optional_read_only: true
+  accepted_requires_evidence_files: true
+  only_this_workflow_sets_verdict: true
+store: <workspace>/.minimax/runs/<run_id>/

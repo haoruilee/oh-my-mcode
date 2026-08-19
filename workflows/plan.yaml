@@ -1,0 +1,15 @@
+# Documentation only. Not a host slash command. Host /plan already exists; we coexist.
+id: plan
+kind: skill-and-cli-workflow
+entry:
+  cli: oh-my-mcode plan "<goal>"
+  tui: "make a plan only for <goal>"
+phases:
+  - INTAKE
+  - DISCOVER
+  - PLAN
+  - PLAN_REVIEW
+rules:
+  no_product_edits: true
+  stop_after: PLAN_REVIEW
+store: <workspace>/.minimax/runs/<run_id>/

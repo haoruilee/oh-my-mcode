@@ -1,0 +1,27 @@
+# Documentation only. This is NOT a MiniMax Code slash command.
+# Commands are not a public Agent Plugin capability on mcode 0.1.6.
+# The host already has /plan /goal /resume. We do not register /max.
+id: max
+kind: skill-and-cli-workflow
+entry:
+  cli: oh-my-mcode max "<goal>"
+  tui: "max mode: <goal>"
+owner: oh-my-mcode orchestrator (CLI) or the max skill (TUI)
+phases:
+  - INTAKE
+  - DISCOVER
+  - PLAN
+  - PLAN_REVIEW
+  - EXECUTE
+  - VERIFY
+  - REPAIR
+  - ACCEPT
+  - RELEASE
+rules:
+  single_host_agent: true
+  only_verify_sets_accepted: true
+  deterministic_verify_first: true
+  accepted_requires_evidence_files: true
+  max_repairs: 3
+  plan_review_default: auto-continue
+store: <workspace>/.minimax/runs/<run_id>/

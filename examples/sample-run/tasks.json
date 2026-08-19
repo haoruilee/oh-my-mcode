@@ -1,0 +1,49 @@
+{
+  "run_id": "run_01K3H7WQ0R8SAMPLEAUTH",
+  "updated_at": "2026-08-20T12:16:00.000Z",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Locate auth tests and the 500-on-mismatch path",
+      "role": "explorer",
+      "status": "done",
+      "depends_on": []
+    },
+    {
+      "id": "T2",
+      "title": "Return 401 on invalid credentials instead of throwing",
+      "role": "builder",
+      "status": "done",
+      "depends_on": ["T1"],
+      "notes": "First attempt returned 403; repair T4 followed."
+    },
+    {
+      "id": "T3",
+      "title": "Independently rerun auth tests",
+      "role": "verifier",
+      "status": "done",
+      "depends_on": ["T2"]
+    },
+    {
+      "id": "T4",
+      "title": "Repair: status code must be 401 not 403",
+      "role": "builder",
+      "status": "done",
+      "depends_on": ["T2"]
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "criterion": "npm test -- auth exits 0",
+      "kind": "test",
+      "command": "npm test -- auth"
+    },
+    {
+      "id": "A2",
+      "criterion": "Auth mismatch responses use HTTP 401",
+      "kind": "test",
+      "command": "npm test -- auth"
+    }
+  ]
+}
