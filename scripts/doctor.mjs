@@ -460,18 +460,27 @@ function checkCliPackage() {
 
 function checkHonesty() {
   const readme = read("README.md");
-  if (/registered \/max/.test(readme) === false && /\/max/.test(readme) && !readme.includes("not a registered")) {
-    err("README must not advertise /max as a registered host command");
+  const zh = existsSync(path.join(ROOT, "README.zh-CN.md")) ? read("README.zh-CN.md") : "";
+  if (!readme.includes("not a registered") && !readme.includes("no registered")) {
+    err("README must say /max is not a registered host command");
   }
-  if (!readme.includes("not a registered")) {
-    warn("README should say /max is not a registered host command");
+  if (!readme.includes("max mode")) err("README must lead with natural-language max mode");
+  if (!readme.includes("coexist")) err("README must say we coexist with host /plan /goal");
+  if (!readme.includes("do not replace") && !readme.includes("We do not replace")) {
+    err("README must say we do not replace host Plan Mode");
   }
-  if (/mavis max/i.test(readme) && !/does not exist|not invent|不是/.test(readme)) {
-    warn("README mentions mavis max — keep it as a non-product");
+  if (!readme.includes("MiniMax-AI/skills") || !/do \*\*not\*\* install|Do \*\*not\*\* install|not install this from/i.test(readme)) {
+    err("README must warn not to install via MiniMax-AI/skills");
+  }
+  const installBlock = readme.split("## Install")[1]?.split("## ")[0] || "";
+  if (/\bomm\b/.test(installBlock) || /\bmmx\b/.test(installBlock) || /\bmavis\b/.test(installBlock)) {
+    err("README install steps must mention only mcode (not omm, mmx, or mavis)");
+  }
+  if (/Alias:\s*`omm`/i.test(readme) || /别名：`omm`/.test(zh)) {
+    err("README must not advertise omm as a second user-facing CLI");
   }
   if (!readme.includes("0.1.6")) warn("README should mention tested host version 0.1.6");
   if (!readme.includes("~/.minimax/plugins")) err("README must document drop-in local install path");
-  if (!readme.includes("oh-my-mcode max")) err("README must lead with the hero CLI");
   note("mcode plugin list --json and mcode --version are the host inspect commands that exist today.");
   note("There is no public host API that lists which Skills were indexed. doctor cannot prove indexation.");
 }

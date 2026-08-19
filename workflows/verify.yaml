@@ -1,9 +1,9 @@
 # Documentation only. Not a host slash command.
 id: verify
-kind: skill-and-cli-workflow
+kind: skill-workflow
 entry:
-  cli: oh-my-mcode verify [run_id]
-  tui: "re-verify the current run against its acceptance criteria"
+  tui: "re-verify this run"
+  not_a_slash_command: true
 phases:
   - VERIFY
   - ACCEPT

@@ -1,7 +1,7 @@
 ---
 name: plan
 description: |
-  Discover the codebase and emit a task DAG plus acceptance criteria without editing product code. Triggers: "make a plan only", "plan mode for this change", "write a plan for migrating", "don't implement yet", "plan review". Do not trigger for max mode / verified delivery to Accepted, resume of an existing run, independent re-verify, doctor/install, or "just implement it".
+  Discover the codebase and emit a task DAG plus acceptance criteria without editing product code. Triggers: "make a verified plan", "make a plan only", "write a plan for migrating", "don't implement yet", "plan review". Do not trigger for host /plan (that is MiniMax Plan Mode — coexist, do not claim we registered it), max mode / verified delivery to Accepted, resume of an existing run, independent re-verify, doctor/install, or "just implement it". This skill is not a slash command.
 license: MIT
 compatibility: Requires MiniMax Code 0.1.6+ with Agent Plugin Skills.
 metadata:
@@ -15,14 +15,15 @@ metadata:
 
 Read-only except run artifacts. Stop at PLAN_REVIEW. No product edits, no commits.
 
+This skill does **not** register host `/plan`. Host `/plan` remains Plan Mode. We add a durable run + acceptance list; we do not replace Plan Mode.
+
 中文名：仅规划。
 
 ## Inputs
 
 - Goal and constraints.
 - Workspace root.
-- Prefer `oh-my-mcode plan "<goal>"` when on PATH.
-- Fallback: `node <plugin-root>/scripts/run-store.mjs` (see `skills/max/references/run-store.md`).
+- State tool: `node <plugin-root>/scripts/run-store.mjs` (see `skills/max/references/run-store.md`).
 
 ## Procedure
 

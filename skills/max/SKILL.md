@@ -1,7 +1,7 @@
 ---
 name: max
 description: |
-  Run the full Oh My MiniMax Code loop to independently Accepted evidence (INTAKE → DISCOVER → PLAN → PLAN_REVIEW → EXECUTE → VERIFY → REPAIR → ACCEPT, optional RELEASE). Triggers: "max mode", "verified mode", "run this to accepted evidence", "oh-my-mcode", "ship with evidence", "prove it passes". Do not trigger for plan-only work, re-verify of an existing run, resume, doctor/install checks, casual Q&A, or Agent Team / spawn requests.
+  Run the full Oh My MiniMax Code loop to independently Accepted evidence (INTAKE → DISCOVER → PLAN → PLAN_REVIEW → EXECUTE → VERIFY → REPAIR → ACCEPT, optional RELEASE). Triggers: "max mode", "verified mode", "run this to accepted evidence", "oh-my-mcode", "ship with evidence", "prove it passes". Do not trigger for plan-only work, host /plan /goal /team, re-verify of an existing run, resume, doctor/install, casual Q&A, or Agent Team / spawn requests. This skill is not a slash command.
 license: MIT
 compatibility: Requires MiniMax Code 0.1.6+ with Agent Plugin Skills. Not a host slash command.
 metadata:
@@ -21,12 +21,11 @@ Full verified-delivery loop on **one host agent**. Role files in `agents/` are c
 
 - User goal, constraints, and any files they named.
 - Workspace root (project being changed). Plugin root is the installed copy, often `~/.minimax/plugins/oh-my-mcode`.
-- Prefer the product CLI when it is on PATH: `oh-my-mcode max "<goal>"` (alias `omm`). It owns phase, verify, repair, and evidence.
-- Fallback state tool: `node <plugin-root>/scripts/run-store.mjs` (see [references/run-store.md](references/run-store.md)). If the binary is missing, still write the same `.minimax/runs` layout yourself.
+- State tool: `node <plugin-root>/scripts/run-store.mjs` (see [references/run-store.md](references/run-store.md)). Always write the same `.minimax/runs` layout. There is no second user-facing CLI to hand off to.
 
 ## Procedure
 
-1. **INTAKE.** Restate the goal in one sentence plus out-of-scope. If `oh-my-mcode` is available, run `oh-my-mcode max "<goal>" --workspace <ws>` and stop competing with it. Otherwise create the run:
+1. **INTAKE.** Restate the goal in one sentence plus out-of-scope. Create the run:
    `node <plugin-root>/scripts/run-store.mjs create --workspace <ws> --goal "<goal>"`
    Persist `run_id`. Tell the user the path `<ws>/.minimax/runs/<run_id>/`.
 2. **DISCOVER.** `set-phase --phase DISCOVER`. Load `agents/explorer.md`. Read-only search and diagnostic commands only. Record risks and test entry points in notes, not in product files.

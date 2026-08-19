@@ -1,7 +1,7 @@
 ---
 name: resume
 description: |
-  Load an existing Oh My MiniMax Code run, restore its phase and current task, and continue that goal. Triggers: "resume the run", "continue run_…", "pick up max mode where we left off", "restore the last verified run". Do not trigger for a new goal, plan-only from scratch, doctor/install, or when the user has not named or implied an existing run.
+  Load an existing Oh My MiniMax Code run, restore its phase and current task, and continue that goal. Triggers: "continue the last oh-my-mcode run", "continue run_…", "pick up max mode where we left off", "restore the last verified run". Do not trigger for host /resume (that is MiniMax session resume — coexist, do not claim we registered it), a new goal, plan-only from scratch, doctor/install, or when the user has not named or implied an existing run. This skill is not a slash command.
 license: MIT
 compatibility: Requires MiniMax Code 0.1.6+ with Agent Plugin Skills.
 metadata:
@@ -15,6 +15,8 @@ metadata:
 
 Never start a new goal. If there is no run to load, stop and tell the user to say `max mode: <task>`.
 
+This skill does **not** register host `/resume`. Host `/resume` continues a MiniMax session. This skill restores `<workspace>/.minimax/runs/<run_id>/`.
+
 中文名：恢复运行。
 
 ## Inputs
@@ -22,7 +24,7 @@ Never start a new goal. If there is no run to load, stop and tell the user to sa
 - `run_id` or "latest run in this workspace".
 - Workspace root.
 - On-disk artifacts under `.minimax/runs/<run_id>/`.
-- Prefer `oh-my-mcode resume [run_id]` when on PATH.
+- State tool: `node <plugin-root>/scripts/run-store.mjs`.
 
 ## Procedure
 

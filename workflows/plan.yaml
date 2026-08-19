@@ -1,9 +1,10 @@
 # Documentation only. Not a host slash command. Host /plan already exists; we coexist.
 id: plan
-kind: skill-and-cli-workflow
+kind: skill-workflow
 entry:
-  cli: oh-my-mcode plan "<goal>"
-  tui: "make a plan only for <goal>"
+  tui: "make a verified plan for <goal>"
+  not_a_slash_command: true
+  coexist_with: ["/plan"]
 phases:
   - INTAKE
   - DISCOVER

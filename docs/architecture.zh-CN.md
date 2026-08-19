@@ -1,22 +1,24 @@
 # 架构
 
-v0 是 **OMM Lite**：一个宿主 agent + 本工作流，由 TypeScript 编排器拥有。角色文件是契约，不是被拉起的人格。没有空壳 monorepo。
+v0 是 **OMM Lite**：一个宿主 agent + 本工作流。对外产品是 **Skill 优先的插件**。角色文件是契约，不是被拉起的人格。没有空壳 monorepo。没有第二条用户命令行。
 
 ## 承诺
 
 不是更多 agent、更多 skill、更长记忆。而是带证据的验收完成。
 
-## 两个窗口，一份状态
+## 一个窗口，一份状态
 
 | 表面 | 入口 | 谁驱动循环 |
 | --- | --- | --- |
-| CLI（产品） | `oh-my-mcode max "..."` | `src/orchestrator.ts` 调用 `mcode exec` |
-| TUI（插件） | 「max mode: ...」 | `max` Skill，写入同一 run store |
+| TUI（产品） | 「max mode: …」/「make a verified plan」/「re-verify this run」 | Skill `max` / `plan` / `verify` / `resume` |
+| 以后的无界面 | `mcode exec` + 加载 max skill 的提示词 | 仍然是 `mcode`，不是包装器 |
 
 状态不只活在 prompt 里：`<workspace>/.minimax/runs/<run_id>/`。
 
+`scripts/run-store.mjs` 是 Skill 改状态时用的无构建工具。`src/` 下的 TypeScript 是同一套契约，给测试/CI 用。不宣传为 `omm` 或 `mavis max`。
+
 阶段：`INTAKE → DISCOVER → PLAN → PLAN_REVIEW → EXECUTE → VERIFY → (REPAIR)* → ACCEPT → RELEASE`。
 
-VERIFY 先跑代码里的测试/构建。LLM 可以只读评判残余问题，但不能改文件，也不能作为唯一验收信号。没有证据文件就不能 Accepted。REPAIR 最多 3 轮，重复失败签名会停。
+只有 `verify` Skill 可以写 Accepted / Rejected。没有证据文件就不能 Accepted。
 
-`scripts/run-store.mjs` 是无构建回退，给只使用 TUI 的用户。`OMM_MCODE` 可覆盖 `mcode` 二进制，供测试注入假宿主。
+宿主 `/plan` / `/goal` / `/resume` / `/team` 不变。这台状态机是 oh-my-mcode run，不是 Plan Mode。

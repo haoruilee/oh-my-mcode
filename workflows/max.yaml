@@ -4,8 +4,8 @@
 id: max
 kind: skill-and-cli-workflow
 entry:
-  cli: oh-my-mcode max "<goal>"
   tui: "max mode: <goal>"
+  not_a_slash_command: true
 owner: oh-my-mcode orchestrator (CLI) or the max skill (TUI)
 phases:
   - INTAKE

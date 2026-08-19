@@ -12,7 +12,6 @@ const HELP = `Oh My MiniMax Code — verified delivery for MiniMax Code
 
 Usage:
   oh-my-mcode <command> [args]
-  omm <command> [args]
 
 Commands:
   max <goal>         Full loop to Accepted evidence

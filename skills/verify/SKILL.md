@@ -1,7 +1,7 @@
 ---
 name: verify
 description: |
-  Independently accept or reject a run against its stored acceptance criteria. Runs tests, builds, and diagnostics; writes findings.json and evidence. Triggers: "re-verify the current run", "verify against acceptance criteria", "grade this run", "don't trust the builder". Do not trigger for implementing fixes, writing new product code, plan-only work, starting a new goal, resume-from-phase (unless the phase is VERIFY), or doctor/install.
+  Independently accept or reject a run against its stored acceptance criteria. Runs tests, builds, and diagnostics; writes findings.json and evidence. Triggers: "re-verify this run", "re-verify the current run", "verify against acceptance criteria", "grade this run", "don't trust the builder". Do not trigger for implementing fixes, writing new product code, plan-only work, host /plan /goal, starting a new goal, resume-from-phase (unless the phase is VERIFY), or doctor/install. This skill is not a slash command.
 license: MIT
 compatibility: Requires MiniMax Code 0.1.6+ with Agent Plugin Skills.
 metadata:
@@ -21,8 +21,7 @@ Only this skill may set run status to `accepted` or `rejected`. Load `agents/ver
 
 - Existing `run_id` (user-supplied, `OMM_RUN_ID`, or `--latest`).
 - `tasks.json` `acceptance[]` and `plan.md`.
-- Prefer `oh-my-mcode verify [run_id]` when on PATH (deterministic tests first; this skill must still not edit product code).
-- Fallback: run store CLI.
+- State tool: `node <plugin-root>/scripts/run-store.mjs`. Run tests yourself; do not edit product code.
 
 ## Procedure
 

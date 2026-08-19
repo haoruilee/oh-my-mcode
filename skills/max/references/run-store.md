@@ -1,6 +1,6 @@
 # Run store CLI
 
-Prefer `oh-my-mcode` / `omm` when installed. Plugin-manager duties otherwise live in `scripts/run-store.mjs`, not in prompt memory.
+Plugin-manager duties live in `scripts/run-store.mjs`, not in prompt memory and not in a second user-facing CLI.
 
 Workspace is the **user project**. Runs are created at:
 

@@ -4,9 +4,29 @@ This is a community project by **haoruilee**. It is not an official MiniMax-AI p
 
 ## What the host already is
 
-Local CLI: `mcode` 0.1.6 (`@minimax-ai/code`), **not** `mavis`. Data directory is `~/.minimax`. `~/.mavis` is a symlink to it on current hosts.
+The product this plugin targets is MiniMax Code CLI **`mcode`** 0.1.6 (`@minimax-ai/code`). Data directory is `~/.minimax`.
 
-The host already has agents `explore`, `mavis`, `verifier`, `worker`, plus Plan Mode, Goal, session resume, `mcode exec`, ACP, and an official plugin marketplace. Our `agents/*.md` files reuse those names as **role contracts** the same host agent must obey. We do not register new host agents. Public Agent Plugins cannot do that today.
+Three different CLIs exist in the MiniMax universe. Do not mix them in user install steps:
+
+| Binary | What it is | Mention in user install? |
+| --- | --- | --- |
+| `mcode` | MiniMax Code (`@minimax-ai/code`) — this plugin's host | **Yes — only this** |
+| `mmx` | Multimodal platform CLI | No |
+| `mavis` | Legacy name; on current hosts `~/.mavis` may symlink to `~/.minimax` | No |
+
+The host already has agents `explore`, `mavis`, `verifier`, `worker`, plus Plan Mode, Goal, session resume, `mcode exec`, ACP, an official plugin marketplace, TUI slash commands `/plan`, `/goal`, `/resume`, and desktop `/team`.
+
+Our `agents/*.md` files reuse some of those names as **role contracts** the same host agent must obey. We do not register new host agents. Public Agent Plugins cannot do that today.
+
+## Slash commands we do not own
+
+The official TUI already has `/plan`, `/goal`, `/resume`, plus desktop `/team`.
+
+Our skills `plan` and `resume` **must not** claim to register those commands. They trigger on natural language only (`make a verified plan`, `continue the last oh-my-mcode run`).
+
+We **coexist** with host `/plan` / `/goal` / `/resume` / `/team`. We add durable run/evidence. We do **not** replace host Plan Mode. Host `/resume` is session resume; our `resume` skill restores a `.minimax/runs/<run_id>` phase.
+
+There is no registered `/max`. Say `max mode: …`.
 
 ## What a public Agent Plugin can ship
 
@@ -25,10 +45,7 @@ Not public plugin capabilities:
 - Generic OAuth
 - TUI extensions
 
-Therefore this repo does **not** invent `/max` as a registered host command. The host already has `/plan`, `/goal`, `/resume`. We coexist. Hero entry is:
-
-- CLI: `oh-my-mcode max "..."` (alias `omm`)
-- TUI: say `max mode: ...` so the `max` **Skill** triggers
+Hero entry is the `max` **Skill**, via natural language. This repo does not ship a second user-facing CLI (`omm`, `mavis max`, `mmx` wrappers).
 
 ## Local marketplace (empirically on 0.1.6)
 
@@ -40,30 +57,28 @@ Therefore this repo does **not** invent `/max` as a registered host command. The
 
 Official desktop submit format lives at `.minimax-plugin/plugin.json`. Portable Agent Plugins 1.0 lives at repo-root `plugin.json`. Skills are auto-discovered from `skills/` for the portable package.
 
-Official submit checklists sometimes reject install scripts, symlinks, and executable-bit-dependent files. `scripts/install.sh` / `install.ps1` and the `oh-my-mcode` bin are for **local** install. If you ZIP for the official catalog, omit those if the reviewer requires it.
+Official submit checklists sometimes reject install scripts, symlinks, and executable-bit-dependent files. `scripts/install.sh` / `install.ps1` are for **local** drop-in. If you ZIP for the official catalog, omit them if the reviewer requires it.
+
+## Not MiniMax-AI/skills
+
+[MiniMax-AI/skills](https://github.com/MiniMax-AI/skills) (the large Claude / Cursor / Codex / OpenCode pack) is **not** a MiniMax Code plugin marketplace. Do not tell users to install oh-my-mcode via that path.
 
 ## Marketplace neighbors
 
-Official marketplace plugins today are mostly domain Skills (Office, finance, legal) plus methodology packs such as Superpowers. Superpowers is the closest competitor. We do not differentiate by shipping more methodology prose or twenty agents. We differentiate on:
+Official marketplace plugins today are mostly domain Skills (Office, finance, legal) plus methodology packs such as Superpowers. Superpowers is the closest competitor. We do not differentiate by shipping more methodology prose or twenty agents. We differentiate on independent verification and a durable run / evidence store.
 
-- a real orchestrator that owns the delivery loop
-- independent, deterministic verification
-- a durable run / evidence store
-
-## Headless later — not a second product CLI wrapping mcode
+## Headless later — still `mcode`, not a wrapper product
 
 `mcode exec` already has `--session`, `--continue`, `--output-format json|stream-json`, `--output-schema`, `--permission`, `--cwd`.
 
-`oh-my-mcode max` **drives** `mcode exec --output-format stream-json`. That is the product. It is not a rebrand of `mcode`, and it is not `mavis max`. The only extra bins are `oh-my-mcode` and `omm`, which own Run / phase / verify / resume / evidence.
-
-Example you can run yourself later:
+Max mode can be driven headless later by `mcode exec` plus a prompt that loads the `max` skill. That is not a second product CLI.
 
 ```bash
 mcode exec --cwd . --output-format stream-json --permission smart \
   "Follow the oh-my-mcode max skill: fix the failing auth tests and prove they pass"
 ```
 
-v0 does not implement Agent Team, recursive spawn, or cancel APIs. Those land when the host exposes them.
+v0 does not implement Agent Team, recursive spawn, or cancel APIs. Those land when the host exposes them. Desktop `/team` remains the host's.
 
 ## Honest inspect surface
 

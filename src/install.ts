@@ -41,7 +41,7 @@ export function installPlugin(): { dest: string } {
   log("  mcode plugin list -m local");
   log("  mcode plugin list -m local --json");
   log("");
-  log("Then say: max mode: <task>");
-  log("Or:       oh-my-mcode max \"<task>\"");
+  log("Then in MiniMax Code (desktop or mcode TUI) say:");
+  log("  max mode: <your task>");
   return { dest };
 }
