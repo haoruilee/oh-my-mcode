@@ -460,11 +460,12 @@ function checkCliPackage() {
 
 function checkHonesty() {
   const readme = read("README.md");
-  const zh = existsSync(path.join(ROOT, "README.zh-CN.md")) ? read("README.zh-CN.md") : "";
-  if (!readme.includes("not a registered") && !readme.includes("no registered")) {
+  if (!readme.includes("not a registered") && !readme.includes("no registered") && !readme.includes("not a registered `/max`")) {
     err("README must say /max is not a registered host command");
   }
-  if (!readme.includes("max mode")) err("README must lead with natural-language max mode");
+  if (!readme.includes('oh-my-mcode max "fix the failing auth tests and prove they pass"')) {
+    err("README must lead with oh-my-mcode max as the hero");
+  }
   if (!readme.includes("coexist")) err("README must say we coexist with host /plan /goal");
   if (!readme.includes("do not replace") && !readme.includes("We do not replace")) {
     err("README must say we do not replace host Plan Mode");
@@ -473,11 +474,11 @@ function checkHonesty() {
     err("README must warn not to install via MiniMax-AI/skills");
   }
   const installBlock = readme.split("## Install")[1]?.split("## ")[0] || "";
-  if (/\bomm\b/.test(installBlock) || /\bmmx\b/.test(installBlock) || /\bmavis\b/.test(installBlock)) {
-    err("README install steps must mention only mcode (not omm, mmx, or mavis)");
+  if (!installBlock.includes("npm install") || !installBlock.includes("npm link") || !installBlock.includes("oh-my-mcode doctor") || !installBlock.includes("oh-my-mcode install")) {
+    err("README install must be clone → npm install → npm link → oh-my-mcode doctor → oh-my-mcode install");
   }
-  if (/Alias:\s*`omm`/i.test(readme) || /别名：`omm`/.test(zh)) {
-    err("README must not advertise omm as a second user-facing CLI");
+  if (/\bmmx\b/.test(installBlock) || /\bmavis\b/.test(installBlock)) {
+    err("README install steps must not mention mmx or mavis");
   }
   if (!readme.includes("0.1.6")) warn("README should mention tested host version 0.1.6");
   if (!readme.includes("~/.minimax/plugins")) err("README must document drop-in local install path");

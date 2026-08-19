@@ -2,15 +2,15 @@
 
 **Not more agents. Verified completion with evidence.**
 
-A Skill-first plugin for MiniMax Code: **Describe → Plan → Build → Verify → Ship**, with a durable run on disk and an independent check that the writer cannot grade.
+`oh-my-mcode` (alias `omm`) is MiniMax Code's verified-delivery layer: **Describe → Plan → Build → Verify → Ship**, with a durable run on disk and an independent check that the writer cannot grade.
 
-It is **not** a Claude-style multi-agent prompt pack, **not** an official MiniMax-AI product, and **not** a second CLI. Author: [haoruilee](https://github.com/haoruilee). License: MIT.
+It is **not** a Claude-style multi-agent prompt pack, and it is **not** an official MiniMax-AI product. Author: [haoruilee](https://github.com/haoruilee). License: MIT.
 
-In MiniMax Code (desktop or `mcode` TUI), say:
+```bash
+oh-my-mcode max "fix the failing auth tests and prove they pass"
+```
 
-> max mode: fix the failing auth tests and prove they pass
-
-That is the hero entry. There is no registered `/max`.
+`max` is the only command you must remember. Alias: `omm`. This is not a registered `/max` host command.
 
 ## Why this exists
 
@@ -24,16 +24,18 @@ We **coexist** with host `/plan`, `/goal`, `/resume`, and desktop `/team`. Those
 
 ## Install (mcode 0.1.6)
 
-Requires MiniMax Code CLI **`mcode`** 0.1.6 (`@minimax-ai/code`). User install steps mention only `mcode`.
+Requires Node 22+ and MiniMax Code CLI **`mcode`** 0.1.6 (`@minimax-ai/code`).
 
 ```bash
 git clone https://github.com/haoruilee/oh-my-mcode
 cd oh-my-mcode
-./scripts/install.sh          # copies into ~/.minimax/plugins/oh-my-mcode
-# Windows: powershell -File scripts/install.ps1
+npm install
+npm link
+oh-my-mcode doctor
+oh-my-mcode install
 ```
 
-On 0.1.6, dropping a folder into `~/.minimax/plugins` auto-installs and enables it (copy, not symlink). Confirm with the host you already use:
+`oh-my-mcode install` **copies** the plugin into `~/.minimax/plugins/oh-my-mcode` (no symlinks). On 0.1.6 that drop-in auto-installs and enables it. Confirm with the host:
 
 ```bash
 mcode --version
@@ -45,19 +47,22 @@ Do **not** install this from [MiniMax-AI/skills](https://github.com/MiniMax-AI/s
 
 Official MiniMax catalog listing is a separate registry — this repo does not claim to be listed there.
 
-## Invoke (natural language)
+## Invoke
 
-After the plugin is visible, talk to the agent. Skills trigger on phrasing, not slash commands:
+**CLI (owns the loop):**
 
-| Say this | Skill |
-| --- | --- |
-| `max mode: <task>` / `verified mode` / `run this to accepted evidence` | `max` — full loop to Accepted evidence |
-| `make a verified plan for …` / `make a plan only` | `plan` — discover + plan + review, no edits |
-| `re-verify this run` | `verify` — independent acceptance |
-| `continue the last oh-my-mcode run` | `resume` — restore a **run store** phase |
-| `is the oh-my-mcode plugin installed?` | `doctor` |
+```bash
+oh-my-mcode max "fix the failing auth tests and prove they pass"
+oh-my-mcode plan "migrate mysql to postgres"
+oh-my-mcode verify [run_id]
+oh-my-mcode resume [run_id]
+oh-my-mcode doctor
+oh-my-mcode install
+```
 
-Host `/plan` is Plan Mode. Host `/resume` is session resume. Host `/goal` is Goal. Desktop `/team` is Agent Team. Use those when you want the host feature. Use the sentences above when you want an oh-my-mcode run with evidence.
+**TUI (same contract):** after the plugin is installed, you can also say `max mode: …`, `make a verified plan`, or `re-verify this run`. Skills trigger on phrasing. They do not register `/max`, `/plan`, or `/resume`.
+
+Host `/plan` is Plan Mode. Host `/resume` is session resume. Host `/goal` is Goal. Desktop `/team` is Agent Team. Use those when you want the host feature. Use `oh-my-mcode` when you want a durable run with evidence.
 
 ## What evidence looks like
 
@@ -86,8 +91,8 @@ VERIFY prefers real test/build commands from the repo. The writer never grades t
 
 - Not a Superpowers clone (more methodology is not the product)
 - Not twenty agents / Agent Team / a Sisyphus orchestrator
-- Not a second user-facing CLI (`omm`, `mavis max`, `mmx` wrappers)
 - Not a replacement for host `/plan` / `/goal` / `/resume` / `/team`
+- Not `mavis max` or an `mmx` wrapper — the host binary remains `mcode`
 - Not installable via MiniMax-AI/skills
 - Not official MiniMax-AI ownership
 - Not listed on the official marketplace unless MiniMax later accepts a submission
@@ -103,15 +108,16 @@ VERIFY prefers real test/build commands from the repo. The writer never grades t
 
 ## Roadmap
 
-- **Lite (now):** Skill plugin + run store + independent verify
+- **Lite (now):** CLI orchestrator + Skill plugin + run store + independent verify
 - **Team:** when the host exposes spawn/cancel/resume APIs for plugins
-- **Slash commands:** when Commands are a public plugin capability — until then, natural language only
+- **Slash commands:** when Commands are a public plugin capability — until then, CLI + natural language
 
 ## Development
 
 ```bash
 npm test
 node scripts/doctor.mjs
+oh-my-mcode doctor --package-only
 ```
 
 No install-time network, no telemetry, no secrets, no package symlinks.

@@ -2,15 +2,15 @@
 
 **不是更多 agent。而是带证据的验收完成。**
 
-面向 MiniMax Code 的 Skill 优先插件：**描述 → 规划 → 实现 → 独立验收 → 发布**，带可落盘的 run，以及作者不能给自己打分的检查。
+`oh-my-mcode`（别名 `omm`）是 MiniMax Code 的验证交付层：**描述 → 规划 → 实现 → 独立验收 → 发布**，带可落盘的 run，以及作者不能给自己打分的检查。
 
-它**不是** Claude 风格的多智能体提示词包，**不是** MiniMax-AI 官方产品，也**不是**第二条命令行。作者：[haoruilee](https://github.com/haoruilee)。许可证：MIT。
+它**不是** Claude 风格的多智能体提示词包，也**不是** MiniMax-AI 官方产品。作者：[haoruilee](https://github.com/haoruilee)。许可证：MIT。
 
-在 MiniMax Code（桌面或 `mcode` TUI）里说：
+```bash
+oh-my-mcode max "fix the failing auth tests and prove they pass"
+```
 
-> max mode: 修失败的 auth 测试并证明它们通过
-
-这就是主入口。没有已注册的 `/max`。
+你只需要记住 `max`。别名：`omm`。这不是已注册的宿主命令 `/max`。
 
 ## 为什么做这个
 
@@ -24,16 +24,18 @@ v0 是 **OMM Lite** —— 一个宿主 agent + 本工作流。角色文件是�
 
 ## 安装（mcode 0.1.6）
 
-需要 MiniMax Code CLI **`mcode`** 0.1.6（`@minimax-ai/code`）。用户安装步骤只提 `mcode`。
+需要 Node 22+ 和 MiniMax Code CLI **`mcode`** 0.1.6（`@minimax-ai/code`）。
 
 ```bash
 git clone https://github.com/haoruilee/oh-my-mcode
 cd oh-my-mcode
-./scripts/install.sh          # 复制到 ~/.minimax/plugins/oh-my-mcode
-# Windows: powershell -File scripts/install.ps1
+npm install
+npm link
+oh-my-mcode doctor
+oh-my-mcode install
 ```
 
-在 0.1.6 上，把文件夹放进 `~/.minimax/plugins` 会自动安装并启用（复制，不是符号链接）。用你已经在用的宿主确认：
+`oh-my-mcode install` 会把插件**复制**到 `~/.minimax/plugins/oh-my-mcode`（不是符号链接）。在 0.1.6 上这样放置会自动安装并启用。用宿主确认：
 
 ```bash
 mcode --version
@@ -45,19 +47,22 @@ mcode plugin list -m local --json
 
 官方目录是另一套注册表。本仓库不声称已上架。
 
-## 怎么用（自然语言）
+## 怎么用
 
-插件可见之后，对代理说话。Skill 靠措辞触发，不是斜杠命令：
+**CLI（拥有循环）：**
 
-| 这样说 | Skill |
-| --- | --- |
-| `max mode: <任务>` / `verified mode` / `run this to accepted evidence` | `max` — 完整闭环到 Accepted 证据 |
-| `make a verified plan for …` / `只做计划` | `plan` — 发现 + 规划 + 评审，不改产品代码 |
-| `re-verify this run` / `按验收标准再验一次` | `verify` — 独立验收 |
-| `继续上一次 oh-my-mcode run` | `resume` — 恢复 **run store** 阶段 |
-| `oh-my-mcode 插件装好了吗` | `doctor` |
+```bash
+oh-my-mcode max "fix the failing auth tests and prove they pass"
+oh-my-mcode plan "migrate mysql to postgres"
+oh-my-mcode verify [run_id]
+oh-my-mcode resume [run_id]
+oh-my-mcode doctor
+oh-my-mcode install
+```
 
-宿主 `/plan` 是 Plan Mode。宿主 `/resume` 是会话恢复。宿主 `/goal` 是 Goal。桌面 `/team` 是 Agent Team。要用宿主功能就用那些斜杠命令。要带证据的 oh-my-mcode run，用上面的句子。
+**TUI（同一契约）：** 插件安装之后，也可以说 `max mode: …`、`make a verified plan`、`re-verify this run`。Skill 靠措辞触发，**不会**注册 `/max`、`/plan`、`/resume`。
+
+宿主 `/plan` 是 Plan Mode。宿主 `/resume` 是会话恢复。宿主 `/goal` 是 Goal。桌面 `/team` 是 Agent Team。要用宿主功能就用那些斜杠命令。要带证据的 durable run，用 `oh-my-mcode`。
 
 ## 证据长什么样
 
@@ -84,8 +89,8 @@ VERIFY 优先跑仓库里真实的测试/构建命令。作者不能给自己的
 
 - 不是 Superpowers 克隆
 - 不是 20 个 agent / Agent Team
-- 不是第二条用户命令行（`omm`、`mavis max`、`mmx` 包装器）
 - 不是替换宿主 `/plan` / `/goal` / `/resume` / `/team`
+- 不是 `mavis max`，也不是 `mmx` 包装器——宿主命令仍是 `mcode`
 - 不是通过 MiniMax-AI/skills 安装
 - 不是 MiniMax-AI 官方项目
 - 不是「已经在官方市场上架」
@@ -101,15 +106,16 @@ VERIFY 优先跑仓库里真实的测试/构建命令。作者不能给自己的
 
 ## 路线
 
-- **Lite（现在）：** Skill 插件 + run store + 独立验收
+- **Lite（现在）：** CLI 编排器 + Skill 插件 + run store + 独立验收
 - **Team：** 等宿主向插件公开派生 API
-- **斜杠命令：** 等 Commands 成为公开插件能力；在此之前只有自然语言
+- **斜杠命令：** 等 Commands 成为公开插件能力；在此之前用 CLI + 自然语言
 
 ## 开发
 
 ```bash
 npm test
 node scripts/doctor.mjs
+oh-my-mcode doctor --package-only
 ```
 
 无安装时联网、无遥测、无密钥、包内无符号链接。
