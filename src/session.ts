@@ -19,6 +19,11 @@ export function synthesizeSessionToken(runId: string): string {
   return `omm_${runId}`;
 }
 
+/** Tokens we used to invent before the host returned a session id. Do not send these. */
+export function isSynthesizedSessionToken(id: string): boolean {
+  return id.startsWith("omm_run_");
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -129,12 +134,18 @@ export function applyHostSession(store: RunStore, runId: string, req: ExecReques
     return next;
   }
   const run = store.load(runId);
-  if (run.host_session_id) {
+  const reusable =
+    Boolean(run.host_session_id) &&
+    run.host_session_source !== "synthesized" &&
+    !isSynthesizedSessionToken(run.host_session_id || "");
+  if (reusable && run.host_session_id) {
     next.session = run.host_session_id;
     if (run.host_continue) next.continue = true;
     return next;
   }
-  if (run.host_continue) next.continue = true;
+  // First turn (and leftover synthesized ids): no fake --session / --continue.
+  // User-requested --continue is host_continue without source=synthesized.
+  if (run.host_continue && run.host_session_source !== "synthesized") next.continue = true;
   return next;
 }
 
@@ -147,21 +158,20 @@ export function rememberHostSession(
 ): void {
   if (opts.noSession || opts.isolated) return;
   const run = store.load(runId);
-  if (run.host_session_id) return;
+  if (run.host_session_id && run.host_session_source !== "synthesized") return;
   const extracted = extractHostSessionId(result);
-  const id = extracted || synthesizeSessionToken(runId);
-  const synthesized = !extracted;
+  if (!extracted) return;
   store.patchRun(runId, {
-    host_session_id: id,
-    host_continue: synthesized || Boolean(sent.continue),
-    host_session_source: extracted ? "host" : "synthesized",
+    host_session_id: extracted,
+    host_continue: Boolean(sent.continue) || Boolean(run.host_continue),
+    host_session_source: "host",
   });
   store.appendEvent(runId, "host_session_bound", {
-    host_session_id: id,
-    source: extracted ? "host" : "synthesized",
+    host_session_id: extracted,
+    source: "host",
     sent: {
       session: sent.session,
-      continue: Boolean(sent.continue) || synthesized,
+      continue: Boolean(sent.continue),
     },
   });
 }
@@ -218,6 +228,7 @@ export async function execTracked(
 
 export function formatHostSessionHints(run: RunRecord): string[] {
   if (!run.host_session_id) return [];
+  if (run.host_session_source === "synthesized" || isSynthesizedSessionToken(run.host_session_id)) return [];
   return [`mcode --session ${run.host_session_id}`, `mcode --continue`];
 }
 

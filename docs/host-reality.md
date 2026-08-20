@@ -71,6 +71,14 @@ Official marketplace plugins today are mostly domain Skills (Office, finance, le
 
 `mcode exec` already has `--session`, `--continue`, `--output-format json|stream-json`, `--output-schema`, `--permission`, `--cwd`.
 
+On **mcode 0.2.1** (`~/.minimax-code/bin/mcode`), `--output-schema <json>` is a JSON object string, not a filesystem path. Passing `schemas/worker-yield.schema.json` fails with:
+
+```
+mcode exec failed: --output-schema requires a JSON object.
+```
+
+We read the schema file and pass the serialized object. If the file is missing, we omit the flag.
+
 Max mode can be driven headless later by `mcode exec` plus a prompt that loads the `max` skill. That is not a second product CLI.
 
 ```bash

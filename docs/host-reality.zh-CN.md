@@ -57,6 +57,14 @@ MiniMax 生态里有三个不同的 CLI。用户安装步骤里不要混写：
 
 `mcode exec` 已有 `--session`、`--continue`、`--output-format`、`--output-schema`、`--permission`。以后可以用 `mcode exec` + 加载 max skill 的提示词做无界面驱动。这不是第二条产品 CLI。
 
+**mcode 0.2.1** 的 `--output-schema <json>` 要的是 JSON 对象字符串，不是文件路径。传 `schemas/worker-yield.schema.json` 会失败：
+
+```
+mcode exec failed: --output-schema requires a JSON object.
+```
+
+我们读 schema 文件，把序列化后的对象传给宿主；文件不存在则省略该旗标。
+
 扁平 `oh-my-mcode team` 是 TypeScript 调度器（不派生孙 agent）。它**不是**宿主 Agent Team，也不是递归派生。桌面 `/team` 仍是宿主的。App 面板、已注册的 `/max`、hooks 要等公开 Extension API。
 
 ## 能检查什么

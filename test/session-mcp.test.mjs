@@ -10,6 +10,7 @@ import { runReview } from "../dist/review.js";
 import { StubMcode } from "../dist/mcode.js";
 import { RunStore } from "../dist/store.js";
 import { runInspect } from "../dist/inspect.js";
+import { applyHostSession, synthesizeSessionToken } from "../dist/session.js";
 import { plannerYield, yieldResult } from "./helpers/yield.mjs";
 
 const SESSION_ID = "host-sess-abc";
@@ -87,6 +88,46 @@ test("--no-session keeps session undefined on every exec", async () => {
     assert.equal(req.session, undefined);
   }
   assert.equal(run.host_session_id, undefined);
+  const store = new RunStore(workspace);
+  assert.ok(!store.loadEvents(run.run_id).some((event) => event.type === "host_session_bound"));
+});
+
+test("leftover synthesized omm_ session is not sent to the host", () => {
+  const workspace = project();
+  const store = new RunStore(workspace);
+  const run = store.create("old synthesized");
+  store.patchRun(run.run_id, {
+    host_session_id: synthesizeSessionToken(run.run_id),
+    host_continue: true,
+    host_session_source: "synthesized",
+  });
+  const next = applyHostSession(
+    store,
+    run.run_id,
+    { cwd: workspace, prompt: "pong", role: "explorer", permission: "off" },
+    {},
+  );
+  assert.equal(next.session, undefined);
+  assert.notEqual(next.continue, true);
+});
+
+test("host omitting session id does not synthesize omm_ or send --continue", async () => {
+  const workspace = project();
+  const requests = [];
+  const run = await runMax({
+    workspace,
+    goal: "no fake session",
+    mcode: stubRecording(requests, { includeSession: false }),
+    llmVerify: false,
+  });
+  assert.ok(requests.length >= 2, `expected ≥2 execs, got ${requests.length}`);
+  for (const req of requests) {
+    assert.equal(req.session, undefined);
+    assert.notEqual(req.continue, true);
+    if (req.session) assert.doesNotMatch(req.session, /^omm_/);
+  }
+  assert.equal(run.host_session_id, undefined);
+  assert.notEqual(run.host_session_source, "synthesized");
   const store = new RunStore(workspace);
   assert.ok(!store.loadEvents(run.run_id).some((event) => event.type === "host_session_bound"));
 });
