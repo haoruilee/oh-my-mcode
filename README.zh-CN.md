@@ -36,7 +36,7 @@ oh-my-mcode max "fix the failing auth tests and prove they pass"
 | **插件 + CLI** | `npx oh-my-mcode install` | 复制到 `~/.minimax/plugins/oh-my-mcode` |
 | **健康检查** | `npx oh-my-mcode doctor` | 包装 + 宿主检查。不联网。 |
 | **宿主冒烟** | `oh-my-mcode doctor --smoke` | 一次极小的 `mcode exec`（`pong`）+ 延迟 |
-| **宿主 TPS** | `oh-my-mcode doctor --tps` | 真的 `mcode exec` stream-json 用量。缺宿主或假宿主打印 `unmeasured` 并无零退出，除非 `--allow-stub` |
+| **宿主 TPS** | `oh-my-mcode doctor --tps` | 真的 `mcode exec` stream-json 用量（含 `input_tokens`）。缺宿主或假宿主打印 `unmeasured` 并无零退出，除非 `--allow-stub` |
 | **从 git（尚未发 npm）** | `npx github:haoruilee/oh-my-mcode install --yes` | 同一套落盘，不依赖 registry |
 
 ```bash

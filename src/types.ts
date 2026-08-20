@@ -75,13 +75,25 @@ export interface RunRecord {
   usage?: UsageTotals;
 }
 
+export interface HostModel {
+  providerId?: string;
+  modelId?: string;
+  variant?: string;
+}
+
 export interface UsageTotals {
   input_tokens?: number;
   output_tokens?: number;
   total_tokens?: number;
+  cache_read_tokens?: number;
   cost_usd?: number;
+  /** message.usage.requestDurationMs — generation clock for output_tps */
+  request_duration_ms?: number;
+  /** exec.result.durationMs — exec clock, not generation */
   duration_ms?: number;
+  thinking_duration_ms?: number;
   first_token_ms?: number;
+  model?: HostModel;
 }
 
 export interface RunEvent {

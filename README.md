@@ -36,7 +36,7 @@ Requires Node 22+ and MiniMax Code CLI **`mcode` 0.1.6** (`@minimax-ai/code`).
 | **Plugin + CLI** | `npx oh-my-mcode install` | Copy into `~/.minimax/plugins/oh-my-mcode` |
 | **Health check** | `npx oh-my-mcode doctor` | Package + host checks. No network. |
 | **Host smoke** | `oh-my-mcode doctor --smoke` | One tiny `mcode exec` (`pong`) + latency |
-| **Host TPS** | `oh-my-mcode doctor --tps` | Real `mcode exec` stream-json usage. Stub/missing host prints `unmeasured` and exits non-zero unless `--allow-stub` |
+| **Host TPS** | `oh-my-mcode doctor --tps` | Real `mcode exec` stream-json usage (`input_tokens` included). Stub/missing host prints `unmeasured` and exits non-zero unless `--allow-stub` |
 | **From git (until npm publish)** | `npx github:haoruilee/oh-my-mcode install --yes` | Same drop-in, no registry publish required |
 
 ```bash

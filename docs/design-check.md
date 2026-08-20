@@ -105,12 +105,12 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 
 ## 10. Real TPS measurement
 
-1. **Verified delivery?** Yes — a real tiny `mcode exec --output-format stream-json` (`reply with exactly pong and nothing else`). If the host is missing or fake, print `unmeasured` and exit non-zero unless `--allow-stub`. We do not invent live tok/s.
-2. **Harness not prompt pack?** Yes — `src/tps.ts`. Persist last report at `~/.minimax/oh-my-mcode/tps.json`.
-3. **One core, many surfaces?** CLI `doctor --tps` only. Tests parse a documented stream-json fixture, not a live capture.
+1. **Verified delivery?** Yes — a real tiny `mcode exec --output-format stream-json --permission off`. If the host is missing or fake, print `unmeasured` and exit non-zero unless `--allow-stub`. We do not invent live tok/s.
+2. **Harness not prompt pack?** Yes — `src/tps.ts` + `src/usage.ts`. Persist last report at `~/.minimax/oh-my-mcode/tps.json`.
+3. **One core, many surfaces?** CLI `doctor --tps` only. Tests parse the captured mcode 0.2.1 shapes (`delta`, `message.usage`, `exec.result`), not a live CI run.
 4. **Subagents are workers not trees?** N/A — one probe exec.
-5. **MiniMax-native?** Uses host `mcode exec`. `ExecResult.usage` parses common usage keys.
-6. **Host honesty?** **Pass, enforced.** Stub host cannot report a fake `output_tps`. Docs do not invent numbers. Fast *feeling* is fewer wasted tokens/retries, not a higher raw tok/s than MiniMax already claims.
+5. **MiniMax-native?** Parses host camelCase: `inputTokens`, `outputTokens`, `totalTokens`, `requestDurationMs`, `cacheReadTokens`, `durationMs`, `thinkingDurationMs`, `model`.
+6. **Host honesty?** **Pass, enforced.** Stub host cannot report a fake `output_tps`. `output_tps` uses `requestDurationMs`, not wall and not `exec.result.durationMs`. Docs cite the local capture (16816 input / 261 output) only as that fixture. We do not default `--model highspeed`. The feel problem is host input tax (~16.8k on a 20-word prompt), not generation tok/s.
 7. **Hero stays `max`?** Yes — doctor is a power tool.
 8. **Codex-as-platform fit?** Health submission against the host runtime.
 

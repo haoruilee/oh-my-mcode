@@ -180,7 +180,7 @@ export class ProcessMcode implements McodeClient {
           rawLines.push(line);
           const event = parseStreamLine(line);
           events.push(event);
-          if (first_token_ms == null && (event.text || event.type === "assistant")) {
+          if (first_token_ms == null && (event.type === "delta" || event.type === "assistant" || event.text)) {
             first_token_ms = Date.now() - started;
           }
           req.onEvent?.(event);
@@ -222,7 +222,6 @@ export class ProcessMcode implements McodeClient {
 
     const wall_ms = Date.now() - started;
     const usage = extractUsage(events, rawLines);
-    if (usage && usage.duration_ms == null) usage.duration_ms = wall_ms;
     if (usage && usage.first_token_ms == null && first_token_ms != null) usage.first_token_ms = first_token_ms;
     return {
       text: collectAssistantText(events),
@@ -232,7 +231,7 @@ export class ProcessMcode implements McodeClient {
       usage,
       structuredOutput: extractStructuredOutput(events),
       wall_ms,
-      first_token_ms,
+      first_token_ms: usage?.first_token_ms ?? first_token_ms,
     };
   }
 }

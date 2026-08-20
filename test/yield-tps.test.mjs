@@ -109,6 +109,47 @@ test("invalid yield retries once then surfaces a failed yield", async () => {
   assert.match(result.yield.findings[0].detail, /structuredOutput|yield|schema/i);
 });
 
+test("mcode 0.2.1 stream-json fixture parses message.usage + exec.result", () => {
+  const fixture = readFileSync(path.resolve("test/fixtures/stream-json-mcode-0.2.1.jsonl"), "utf8")
+    .split("\n")
+    .filter((line) => line.trim() && !line.includes("_comment"));
+  const events = fixture.map((line) => parseStreamLine(line));
+  const usage = extractUsage(events, fixture);
+  assert.equal(usage?.input_tokens, 16816);
+  assert.equal(usage?.output_tokens, 261);
+  assert.equal(usage?.total_tokens, 20348);
+  assert.equal(usage?.cache_read_tokens, 3271);
+  assert.equal(usage?.request_duration_ms, 7598);
+  assert.equal(usage?.duration_ms, 10911);
+  assert.equal(usage?.thinking_duration_ms, 1061);
+  assert.equal(usage?.first_token_ms, 4700);
+  assert.deepEqual(usage?.model, { providerId: "minimax", modelId: "MiniMax-M3", variant: "thinking" });
+
+  const report = tpsFromExec(
+    { text: "pong", events, exitCode: 0, rawLines: fixture, usage, wall_ms: 20710, first_token_ms: usage.first_token_ms },
+    tpsProbePrompt(),
+    { stub: false, allowStub: false },
+  );
+  assert.equal(report.unmeasured, false);
+  assert.equal(report.input_tokens, 16816);
+  assert.equal(report.output_tokens, 261);
+  assert.equal(report.total_tokens, 20348);
+  assert.equal(report.cache_read_tokens, 3271);
+  assert.equal(report.request_duration_ms, 7598);
+  assert.equal(report.exec_duration_ms, 10911);
+  assert.equal(report.thinking_duration_ms, 1061);
+  assert.equal(report.wall_ms, 20710);
+  assert.equal(report.first_token_ms, 4700);
+  assert.equal(report.output_tps, Number((261 / 7.598).toFixed(3)));
+  assert.equal(report.wall_tps, Number((261 / 20.71).toFixed(3)));
+  assert.equal(report.model?.modelId, "MiniMax-M3");
+  const text = formatTps(report);
+  assert.match(text, /input_tokens: 16816/);
+  assert.match(text, /output_tps: 34\.351/);
+  assert.match(text, /wall_tps: 12\.603/);
+  assert.match(text, /model: minimax\/MiniMax-M3 \(thinking\)/);
+});
+
 test("stream-json usage fixture parses tokens and duration", () => {
   const fixture = readFileSync(path.resolve("test/fixtures/stream-json-usage.jsonl"), "utf8")
     .split("\n")

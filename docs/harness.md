@@ -65,9 +65,11 @@ Inspect/MCP can address store files as `run://<run_id>/findings` (and `evidence`
 
 If host `stream-json` includes usage fields, we parse them and show them on `status`. Otherwise the HUD prints `Cache/cost: n/a if unknown`. We do not invent numbers.
 
-`oh-my-mcode doctor --tps` runs a real tiny host exec and reports `wall_ms`, token counts, `output_tps` / `wall_tps` when the host reported them, plus our prompt size (probe and a typical builder). Missing or fake host: print `unmeasured` and exit non-zero unless `--allow-stub`. Last report: `~/.minimax/oh-my-mcode/tps.json`.
+`oh-my-mcode doctor --tps` runs a real tiny host exec (`--permission off`, no `--model` default) and reports this shape: `host_binary`, `host_version`, `wall_ms`, `input_tokens`, `output_tokens`, `total_tokens`, `cache_read_tokens`, `request_duration_ms`, `exec_duration_ms`, `thinking_duration_ms`, `output_tps`, `wall_tps`, `first_token_ms`, `model`, plus our prompt size (probe and a typical builder). `output_tps` uses `message.usage.requestDurationMs` (generation). `wall_tps` uses spawn-to-close. Missing or fake host: print `unmeasured` and exit non-zero unless `--allow-stub`. Last report: `~/.minimax/oh-my-mcode/tps.json`.
 
-Oh My Pi feels fast mostly because of fewer wasted tokens and fewer retries, not a higher raw tok/s. We copy the yield / minimal-prompt / no-JSONL-leak pieces. We do not copy hashline-as-edit-tool, 31 tools, or grandchild agents.
+Parser fixtures live under `test/fixtures/stream-json-mcode-0.2.1.jsonl` (captured mcode 0.2.1 MiniMax-M3 thinking, prose redacted). That local capture reported **16816 input tokens** for a ~20-word no-tools prompt (`message.usage`: input 16816 / output 261 / cache-read 3271 / requestDurationMs 7598; `exec.result.durationMs` 10911; wall 20.71s). Almost all of that input is host system/tools. `src/prompts.ts` is only a few thousand characters. If we paste files, dump JSONL, or ship a Sisyphus essay, we add tax on top of ~16.8k. The speed problem is that input tax, not the ~34 tok/s generation clock.
+
+Oh My Pi feels fast mostly because of fewer wasted tokens and fewer retries. We copy yield / minimal-prompt / no-JSONL-leak / hash-stale-reject / `--tps` so `input_tokens` is visible every run. We do not copy hashline-as-edit-tool, 31 tools, or grandchild agents. We do not default `--model highspeed`.
 
 ## What this is not
 
