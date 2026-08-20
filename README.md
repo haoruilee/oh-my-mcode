@@ -86,10 +86,12 @@ Host `/plan` is Plan Mode. Host `/resume` is session resume. Host `/goal` is Goa
 | `attach [run_id]` | HUD. `--watch` tails events |
 | `status [run_id]` | One-shot HUD |
 | `cancel [run_id]` | Mark cancelled; persist `run_cancelled` |
-| `inspect <topic>` | `tools` \| `skills` \| `agents` \| `context` \| `runs` \| `model-policy` |
+| `inspect <topic>` | `tools` \| `skills` \| `agents` \| `context` \| `runs` \| `model-policy` (context includes `host_session_id`) |
 | `team <task>` | Flat team mode (explicit). Sequential `max` stays the default |
-| `doctor` | Host + package health |
+| `doctor` | Host + package health (requires MCP manifest + server) |
 | `install` | Copy plugin into `~/.minimax/plugins/oh-my-mcode` |
+
+`max` / `plan` / `team` accept `--session <id>` (attach an existing host session) and `--no-session` (cold-start every `mcode exec`). Default is one host session per run.
 
 `ship` does not `git push` unless you pass `--commit` and git is clean enough. Default is notes + a command list.
 
@@ -109,6 +111,36 @@ Evidence: 8 files  Repairs: 1/3  Cache/cost: n/a if unknown
 ```
 
 That is the App/CLI unification until the host exposes a daemon API. We do not ship App panels.
+
+## Session continuity
+
+Each oh-my-mcode run binds **one host `mcode` session** and persists `host_session_id` (and optional `host_continue`) on `run.json`. The first `mcode exec` of a run is a cold start (or `--continue` if you passed that flag). After it returns, we take a session id from stream-json (`session` / `session_id` / `sessionId`, or `id` on `exec.result` / `metadata`). If the host does not echo one, we synthesize a stable `omm_<run_id>` token and still pass `--session` plus `--continue` on later calls so the host can resume latest-in-cwd as fallback.
+
+Later phases of **that** run (plan, build, verify-llm, review, research, team builders in the same workspace) pass `--session <id>`. Parallel team worktrees are the exception: they use a different cwd, so they may open their own session instead of inheriting the parent run's.
+
+After `max` / `team` / `plan`, the CLI prints:
+
+```
+mcode --session <id>
+mcode --continue
+```
+
+so the TUI/App can open the same host session. `oh-my-mcode inspect context` shows `host_session_id`. `--no-session` is the tests / escape hatch.
+
+## MCP tools
+
+The plugin ships a dependency-free stdio MCP server (`mcp/server.mjs`, listed from `mcp.json`). Workspace is cwd or `OMM_WORKSPACE`. If the TUI exposes `omm_*` tools, use them instead of hand-writing run files.
+
+| Tool | What it does |
+| --- | --- |
+| `omm_run_create` | Create a run (`{ goal }`) |
+| `omm_run_show` | Show one run (`{ run_id? }`) |
+| `omm_run_list` | List runs |
+| `omm_status` | Same HUD text as `oh-my-mcode status` |
+| `omm_verify` | Deterministic verify only (no builder) |
+| `omm_inspect` | `inspect` topics (`{ topic, run_id? }`) |
+
+This is not a registered `/max` host command. Host `/plan` `/goal` `/resume` `/team` stay the host's.
 
 ## Team
 
@@ -202,7 +234,7 @@ npm run eval
 | Host | Package | Status |
 | --- | --- | --- |
 | MiniMax Code CLI / desktop | `@minimax-ai/code` **0.1.6** | Tested against this version |
-| Public plugin surface | Skills + MCP only | We ship Skills, no MCP |
+| Public plugin surface | Skills + MCP only | We ship Skills + portable MCP (`mcp.json`) |
 | Host slash commands | `/plan` `/goal` `/resume` `/team` | Coexist; we do not register them |
 | Hooks, Commands, custom Agents, LSP, Apps | Not public | Not advertised as working |
 

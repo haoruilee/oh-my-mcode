@@ -23,6 +23,7 @@ This skill does **not** register host `/team`. Desktop `/team` remains the host'
 
 - Task / goal.
 - Prefer `oh-my-mcode team "<task>"` or `oh-my-mcode max --team "<task>"`.
+- **MCP first:** if `omm_*` tools exist, use them instead of hand-writing run files. Parallel worktrees may use their own host session (different cwd); the parent run session stays on the workspace.
 - Optional `--worktree` (git worktree per parallel builder under `.minimax/worktrees/<run>/<task>`).
 - Concurrency default 2.
 

@@ -4,15 +4,20 @@ import { log, McodeMissingError, nowIso, promptYesNo } from "./util.js";
 import { RunStore } from "./store.js";
 import { ProcessMcode, resolveMcodeInvocation, type ExecRequest, type ExecResult, type McodeClient } from "./mcode.js";
 import {
+  applyRequestedSession,
+  emitHostSessionHints,
+  execTracked,
+  judgeEvidenceFiles,
+  type SessionOpts,
+} from "./session.js";
+import {
   detectProjectCommands,
   findingsFromDeterministic,
   judgePrompt,
-  optionalLlmJudge,
   runCaptured,
   runDeterministicVerify,
 } from "./verify.js";
 import { builderPrompt, explorerPrompt, plannerPrompt, plannerTeamPrompt, repairPrompt } from "./prompts.js";
-import { execWithRepair } from "./tool-repair.js";
 import { drainBuilderWaves } from "./team.js";
 import { cleanupRunWorktrees, createWorktree, mergeWorktree } from "./worktree.js";
 import { loadWorkflow } from "./workflows.js";
@@ -33,6 +38,9 @@ export interface OrchestratorOptions {
   workflow?: string;
   mcode?: McodeClient;
   onLog?: (line: string) => void;
+  session?: string;
+  noSession?: boolean;
+  continue?: boolean;
 }
 
 function emit(opts: OrchestratorOptions, line: string): void {
@@ -155,13 +163,24 @@ async function persistExec(store: RunStore, runId: string, phase: string, result
   });
 }
 
+function sessionOptsOf(opts: OrchestratorOptions, extra: SessionOpts = {}): SessionOpts {
+  return {
+    noSession: opts.noSession,
+    session: opts.session,
+    continue: opts.continue,
+    ...extra,
+  };
+}
+
 async function execRole(
   client: McodeClient,
   store: RunStore,
   runId: string,
   req: ExecRequest,
+  opts: OrchestratorOptions,
+  extra: SessionOpts = {},
 ): Promise<ExecResult> {
-  return execWithRepair(client, req, { store, runId });
+  return execTracked(client, store, runId, req, sessionOptsOf(opts, extra));
 }
 
 function discoveryText(store: RunStore, runId: string): string {
@@ -195,6 +214,7 @@ export async function runMax(opts: OrchestratorOptions): Promise<RunRecord> {
   const store = new RunStore(opts.workspace);
   const run = opts.runId ? store.load(opts.runId) : store.create(opts.goal || "");
   rememberOptions(store, run.run_id, { ...opts, workflow: opts.workflow || (opts.team ? "team" : "max") });
+  applyRequestedSession(store, run.run_id, opts);
   emit(opts, `run ${run.run_id} at ${store.dir(run.run_id)}`);
   const client = await requireClient(opts, store, run.run_id);
   return drive(store, client, run.run_id, opts, { stopAfter: "ACCEPT" });
@@ -208,6 +228,7 @@ export async function runPlan(opts: OrchestratorOptions): Promise<RunRecord> {
   const store = new RunStore(opts.workspace);
   const run = opts.runId ? store.load(opts.runId) : store.create(opts.goal || "");
   rememberOptions(store, run.run_id, { ...opts, workflow: opts.workflow || "plan" });
+  applyRequestedSession(store, run.run_id, opts);
   emit(opts, `run ${run.run_id} at ${store.dir(run.run_id)}`);
   const client = await requireClient(opts, store, run.run_id);
   return drive(store, client, run.run_id, { ...opts, workflow: opts.workflow || "plan" }, { stopAfter: "PLAN_REVIEW" });
@@ -236,6 +257,7 @@ export async function runResume(opts: OrchestratorOptions): Promise<RunRecord> {
     emit(opts, `run ${runId} is cancelled`);
     return run;
   }
+  applyRequestedSession(store, runId, opts);
   const client = await requireClient(opts, store, runId);
   const plannedOnly = run.phase === "PLAN" || run.phase === "PLAN_REVIEW";
   const stopAfter = plannedOnly && !opts.ralph ? "PLAN_REVIEW" : "ACCEPT";
@@ -275,12 +297,19 @@ async function executeOneBuilder(
       store.appendEvent(runId, "worktree_created", { path: worktree.path, branch: worktree.branch }, { task_id: task.id });
     }
   }
-  const result = await execRole(client, store, runId, {
-    cwd,
-    prompt,
-    role: "builder",
-    permission,
-  });
+  const result = await execRole(
+    client,
+    store,
+    runId,
+    {
+      cwd,
+      prompt,
+      role: "builder",
+      permission,
+    },
+    opts,
+    { isolated: Boolean(worktree?.created) },
+  );
   await persistExec(store, runId, `execute-${task.id}`, result);
   if (worktree?.created) {
     const sliceOk = await verifyWorktreeSlice(worktree.path);
@@ -308,12 +337,18 @@ async function drive(
   if (shouldRun(run.phase, "DISCOVER", ctrl.resumeFrom) && workflow.phases.includes("DISCOVER")) {
     store.setPhase(runId, "DISCOVER");
     emit(opts, "phase DISCOVER");
-    const result = await execRole(client, store, runId, {
-      cwd: opts.workspace,
-      prompt: explorerPrompt(run.goal),
-      role: "explorer",
-      permission: permission === "full" ? "ask" : permission,
-    });
+    const result = await execRole(
+      client,
+      store,
+      runId,
+      {
+        cwd: opts.workspace,
+        prompt: explorerPrompt(run.goal),
+        role: "explorer",
+        permission: permission === "full" ? "ask" : permission,
+      },
+      opts,
+    );
     await persistExec(store, runId, "discover", result);
     store.writeTextEvidence(runId, "log", "discover.md", result.text || "(no explorer output)", {
       notes: "explorer",
@@ -325,12 +360,18 @@ async function drive(
     store.setPhase(runId, "PLAN");
     emit(opts, "phase PLAN");
     const discoverBody = discoveryText(store, runId);
-    const result = await execRole(client, store, runId, {
-      cwd: opts.workspace,
-      prompt: opts.team ? plannerTeamPrompt(run.goal, discoverBody) : plannerPrompt(run.goal, discoverBody),
-      role: "planner",
-      permission: "ask",
-    });
+    const result = await execRole(
+      client,
+      store,
+      runId,
+      {
+        cwd: opts.workspace,
+        prompt: opts.team ? plannerTeamPrompt(run.goal, discoverBody) : plannerPrompt(run.goal, discoverBody),
+        role: "planner",
+        permission: "ask",
+      },
+      opts,
+    );
     await persistExec(store, runId, "plan", result);
     store.writePlan(runId, planMarkdown(run.goal, discoverBody, result.text));
     store.writeTasks(runId, tasksFromPlanner(runId, run.goal, result.text));
@@ -347,7 +388,9 @@ async function drive(
     }
     if (ctrl.stopAfter === "PLAN_REVIEW") {
       store.evidenceReport(runId);
-      return store.load(runId);
+      const planned = store.load(runId);
+      emitHostSessionHints(planned, (line) => emit(opts, line));
+      return planned;
     }
   }
 
@@ -416,7 +459,9 @@ async function drive(
     emit(opts, "phase RELEASE — commit/PR yourself after Accepted; this is not a second VCS CLI");
   }
   store.evidenceReport(runId);
-  return store.load(runId);
+  const finished = store.load(runId);
+  emitHostSessionHints(finished, (line) => emit(opts, line));
+  return finished;
 }
 
 async function verifyPhase(
@@ -432,12 +477,18 @@ async function verifyPhase(
   if (opts.llmVerify !== false && client) {
     try {
       const run = store.load(runId);
-      const judged = await optionalLlmJudge(
+      const judged = await execRole(
         client,
-        opts.workspace,
-        "verifier",
-        judgePrompt(run.goal, store.loadPlan(runId), det),
-        "ask",
+        store,
+        runId,
+        {
+          cwd: opts.workspace,
+          prompt: judgePrompt(run.goal, store.loadPlan(runId), det),
+          role: "verifier",
+          permission: "ask",
+          files: judgeEvidenceFiles(store, runId),
+        },
+        opts,
       );
       await persistExec(store, runId, "verify-llm", judged);
       const parsed = extractJsonBlock(judged.text) as { blockers?: { title: string; detail: string }[] } | undefined;

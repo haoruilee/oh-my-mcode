@@ -6,6 +6,8 @@ import { installPlugin } from "./install.js";
 import { runMax, runPlan, runResume, runTeam, runVerifyOnly } from "./orchestrator.js";
 import { PERMISSIONS, type Permission } from "./types.js";
 import { applyFlagOverrides, loadConfig } from "./config.js";
+import { emitHostSessionHints } from "./session.js";
+import type { RunRecord } from "./types.js";
 import { attachHud, renderHud, loadHud, watchHud } from "./hud.js";
 import { formatInspect, INSPECT_TOPICS, runInspect } from "./inspect.js";
 import { runReview } from "./review.js";
@@ -54,6 +56,9 @@ Options:
   --watch                attach: tail events / refresh HUD
   --commit               ship: local commit if git is clean enough; push only then
   --package-only         doctor: skip mcode-on-PATH (CI)
+  --session ID           Attach this run to an existing host mcode session
+  --no-session           Force cold-start exec (tests / escape hatch)
+  --continue             First exec uses host --continue (latest-in-cwd)
   --json                 Machine-readable stdout
   --help, -h             Show this help
   --version, -V          Print ${VERSION}
@@ -95,6 +100,9 @@ interface Flags {
   json?: boolean;
   help?: boolean;
   version?: boolean;
+  session?: string;
+  "no-session"?: boolean;
+  continue?: boolean;
 }
 
 const BOOL_FLAGS = new Set([
@@ -108,6 +116,8 @@ const BOOL_FLAGS = new Set([
   "ralph",
   "watch",
   "commit",
+  "no-session",
+  "continue",
 ]);
 
 function parseArgv(argv: string[]): Flags {
@@ -137,8 +147,8 @@ function parseArgv(argv: string[]): Flags {
       flags.run = value;
       continue;
     }
-    if (token === "--permission" || token === "--max-repairs" || token === "--concurrency") {
-      const key = token.slice(2) as "permission" | "max-repairs" | "concurrency";
+    if (token === "--permission" || token === "--max-repairs" || token === "--concurrency" || token === "--session") {
+      const key = token.slice(2) as "permission" | "max-repairs" | "concurrency" | "session";
       flags[key] = argv[++i];
       continue;
     }
@@ -160,6 +170,10 @@ function permissionOf(flags: Flags, fallback: Permission): Permission {
     throw new CliError(`--permission must be ${PERMISSIONS.join("|")}`);
   }
   return value as Permission;
+}
+
+function printSessionHints(run: RunRecord): void {
+  emitHostSessionHints(run, log);
 }
 
 function print(value: unknown, asJson: boolean): void {
@@ -208,6 +222,9 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
     worktree: Boolean(flags.worktree || cfg.team.worktree),
     ralph: Boolean(flags.ralph),
     concurrency: cfg.team.concurrency,
+    session: flags.session,
+    noSession: Boolean(flags["no-session"]),
+    continue: Boolean(flags.continue),
   };
 
   if (command === "doctor") {
@@ -228,6 +245,7 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
     try {
       const run = await runMax({ ...common, goal: rest });
       print(run, true);
+      printSessionHints(run);
       return run.status === "accepted" ? 0 : 2;
     } catch (error) {
       if (error instanceof McodeMissingError) {
@@ -245,6 +263,7 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
     if (!rest && !flags["run-id"]) throw new CliError('usage: oh-my-mcode plan "<goal>"');
     const run = await runPlan({ ...common, goal: rest });
     print(run, true);
+    printSessionHints(run);
     return 0;
   }
 
@@ -314,6 +333,7 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
     try {
       const run = await runTeam({ ...common, goal: rest, team: true, workflow: "team" });
       print(run, true);
+      printSessionHints(run);
       return run.status === "accepted" ? 0 : 2;
     } catch (error) {
       if (error instanceof McodeMissingError) {

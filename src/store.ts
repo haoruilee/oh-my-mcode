@@ -461,6 +461,7 @@ export class RunStore {
       `- status: ${run.status}`,
       `- created_at: ${run.created_at}`,
       `- updated_at: ${run.updated_at}`,
+      `- host_session_id: ${run.host_session_id || "_none_"}`,
       ``,
       `## Acceptance`,
       ``,

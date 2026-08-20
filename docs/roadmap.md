@@ -9,7 +9,8 @@ This maps the original product plan to what this repo ships. Host-honesty: publi
 | Plan | What shipped |
 | --- | --- |
 | §7 Command surface | CLI: `max` `plan` `verify` `resume` `review` `ship` `research` `attach` `status` `cancel` `inspect` `team` `doctor` `install`. Hero remains `oh-my-mcode max` / `omm`. Matching Skills for max/plan/verify/resume/doctor/review/ship/research/team |
-| Persistent run + EventStore | `.minimax/runs/<id>/` with atomic writes. Extra events: `review_completed`, `ship_prepared`, `research_completed`, `task_cancelled`, `team_spawned`, `worktree_created`, `hud_attached`, `run_cancelled` |
+| Persistent run + EventStore | `.minimax/runs/<id>/` with atomic writes. Extra events: `review_completed`, `ship_prepared`, `research_completed`, `task_cancelled`, `team_spawned`, `worktree_created`, `hud_attached`, `run_cancelled`, `host_session_bound` |
+| Session continuity + MCP | One host session per run; structured `mcode exec` (`--output-schema`, `--file`); portable MCP tools `omm_*` |
 | HUD / App-CLI unification | `attach` / `status` render the same folder TUI skills write. No host daemon API |
 | Phase C flat team | `team` / `max --team`: TypeScript scheduler, bounded concurrency (default 2), optional git worktrees. No grandchild agents. Sequential `max` stays default |
 | Ralph / todo continuation | `tasks.json` is source of truth. `resume` never invents a goal. `--ralph` continues until Accepted with the existing repair bound. Repeated failure signatures escalate in `summary.md` |

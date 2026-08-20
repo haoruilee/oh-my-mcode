@@ -26,6 +26,7 @@ Honest install and package checks. No telemetry. No network.
 
 1. Run the package checker (this is the real test):
    `node <plugin-root>/scripts/doctor.mjs`
+   Doctor requires `mcp.json`, a non-empty `mcpServers` list, and `mcp/server.mjs`. If MCP tools `omm_*` exist, prefer them over hand-writing run files.
 2. Suggest host commands that **exist** on mcode 0.1.6:
    - `mcode --version`
    - `mcode plugin list --json`

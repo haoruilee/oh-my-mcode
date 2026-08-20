@@ -15,7 +15,7 @@
     "Research how auth tokens are rotated — do not implement"
   ],
   "apps": [],
-  "mcpServers": [],
+  "mcpServers": ["mcp.json"],
   "skills": [
     "skills/max/SKILL.md",
     "skills/plan/SKILL.md",

@@ -22,6 +22,7 @@ Full verified-delivery loop on **one host agent**. Role files in `agents/` are c
 - User goal, constraints, and any files they named.
 - Workspace root (project being changed). Plugin root is the installed copy, often `~/.minimax/plugins/oh-my-mcode`.
 - State tool: `node <plugin-root>/scripts/run-store.mjs` (see [references/run-store.md](references/run-store.md)). Always write the same `.minimax/runs` layout. There is no second user-facing CLI to hand off to.
+- **MCP first:** if tools `omm_run_create`, `omm_run_show`, `omm_run_list`, `omm_status`, `omm_verify`, or `omm_inspect` exist, use them instead of hand-writing run files or inventing a second store. Do not set PLUGIN_ROOT / PLUGIN_DATA.
 
 ## Procedure
 
@@ -41,6 +42,7 @@ Full verified-delivery loop on **one host agent**. Role files in `agents/` are c
 
 - A run directory with `run.json`, `plan.md`, `tasks.json`, `events.jsonl`, `evidence/`, and after verify: `findings.json` + `summary.md`.
 - User-facing close: goal, `run_id`, verdict, commands that were run, remaining risks.
+- After CLI `max` / `team` / `plan`, tell the user they can reopen the same host session with `mcode --session <host_session_id>` or `mcode --continue`. Parallel team worktrees may use their own session (different cwd).
 - If the run is not Accepted, say so. Do not euphemize.
 
 ## Failure handling

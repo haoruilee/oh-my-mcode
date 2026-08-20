@@ -38,7 +38,8 @@
         "team_spawned",
         "worktree_created",
         "hud_attached",
-        "run_cancelled"
+        "run_cancelled",
+        "host_session_bound"
       ]
     },
     "run_id": {

@@ -24,6 +24,7 @@ This skill does **not** register host `/plan`. Host `/plan` remains Plan Mode. W
 - Goal and constraints.
 - Workspace root.
 - State tool: `node <plugin-root>/scripts/run-store.mjs` (see `skills/max/references/run-store.md`).
+- **MCP first:** if `omm_run_create` / `omm_status` / `omm_inspect` exist, use them instead of hand-writing run files. After plan, print `mcode --session <id>` and `mcode --continue` so the TUI can reopen the same host session.
 
 ## Procedure
 

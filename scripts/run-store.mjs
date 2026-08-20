@@ -66,6 +66,7 @@ const EVENT_TYPES = [
   "worktree_created",
   "hud_attached",
   "run_cancelled",
+  "host_session_bound",
 ];
 
 const EVIDENCE_KINDS = ["command", "test", "diff", "log", "other"];

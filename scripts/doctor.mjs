@@ -187,9 +187,29 @@ function checkManifests() {
   if (!Array.isArray(official.apps) || official.apps.length !== 0) {
     err("official manifest apps must be [] — Apps are not a public plugin capability");
   }
-  if (!Array.isArray(official.mcpServers) || official.mcpServers.length !== 0) {
-    err("official manifest mcpServers must be [] for v0");
+  if (!Array.isArray(official.mcpServers) || official.mcpServers.length === 0) {
+    err("official manifest mcpServers must list mcp.json");
+  } else if (!official.mcpServers.includes("mcp.json")) {
+    err("official manifest mcpServers must include mcp.json");
   }
+  const mcp = readJson("mcp.json");
+  if (!mcp) {
+    err("mcp.json is missing or invalid");
+  } else {
+    const server = mcp.mcpServers && mcp.mcpServers["oh-my-mcode"];
+    if (!server) err("mcp.json must declare mcpServers.oh-my-mcode");
+    else {
+      if (server.type !== "stdio") err("mcp.json oh-my-mcode.type must be stdio");
+      if (server.command !== "node") err("mcp.json oh-my-mcode.command must be node");
+      const args = Array.isArray(server.args) ? server.args.join(" ") : "";
+      if (!args.includes("mcp/server.mjs")) err("mcp.json args must point at ./mcp/server.mjs");
+      if (server.env && (server.env.PLUGIN_ROOT || server.env.PLUGIN_DATA)) {
+        err("mcp.json must not set PLUGIN_ROOT or PLUGIN_DATA");
+      }
+    }
+  }
+  if (!existsSync(path.join(ROOT, "mcp/server.mjs"))) err("mcp/server.mjs is missing");
+  else note("MCP server mcp/server.mjs present");
   if (!Array.isArray(official.skills) || official.skills.length === 0) {
     err("official manifest must list skills");
     return;
@@ -284,6 +304,7 @@ function loadSchemas() {
     "task-contract.schema.json",
     "finding.schema.json",
     "evidence.schema.json",
+    "planner-output.schema.json",
   ];
   const schemas = {};
   for (const name of names) {
@@ -456,6 +477,7 @@ function checkCliPackage() {
     "config.ts",
     "worktree.ts",
     "tool-repair.ts",
+    "session.ts",
   ]) {
     if (!existsSync(path.join(ROOT, "src", name))) err(`missing src/${name}`);
   }

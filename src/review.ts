@@ -3,7 +3,7 @@ import type { FindingItem, RunRecord } from "./types.js";
 import { nowIso } from "./util.js";
 import { RunStore } from "./store.js";
 import { ProcessMcode, type McodeClient } from "./mcode.js";
-import { execWithRepair } from "./tool-repair.js";
+import { applyRequestedSession, execTracked, judgeEvidenceFiles } from "./session.js";
 import { loadWorkflow } from "./workflows.js";
 import { clipRole, reviewerPrompt } from "./prompts.js";
 
@@ -12,6 +12,9 @@ export interface ReviewOptions {
   runId?: string;
   mcode?: McodeClient;
   permission?: "ask" | "smart" | "full" | "off";
+  session?: string;
+  noSession?: boolean;
+  continue?: boolean;
 }
 
 export interface ReviewReport {
@@ -42,11 +45,14 @@ export async function runReview(opts: ReviewOptions): Promise<{ run: RunRecord; 
   const diff = gitDiff(opts.workspace);
   const extra: FindingItem[] = [];
 
+  applyRequestedSession(store, runId, opts);
   const client = opts.mcode || (process.env.OMM_MCODE ? new ProcessMcode() : undefined);
   if (client) {
     try {
-      const result = await execWithRepair(
+      const result = await execTracked(
         client,
+        store,
+        runId,
         {
           cwd: opts.workspace,
           prompt: reviewerPrompt({
@@ -59,8 +65,9 @@ export async function runReview(opts: ReviewOptions): Promise<{ run: RunRecord; 
           }),
           role: "verifier",
           permission: "ask",
+          files: judgeEvidenceFiles(store, runId),
         },
-        { store, runId },
+        opts,
       );
       store.writeTextEvidence(runId, "log", "review-llm.md", result.text || "(empty review)", {
         notes: "read-only review; cannot Accept",

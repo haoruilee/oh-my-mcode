@@ -27,6 +27,8 @@ Writes are temp-file + rename. One writer at a time (`.lock`).
 
 `write-findings` is the only command that may set `accepted` or `rejected`. Call it only from the `verify` skill.
 
-Event types: `run_created`, `phase_changed`, `task_started`, `task_completed`, `tool_called`, `test_ran`, `finding_emitted`, `repair_requested`, `run_accepted`, `run_rejected`, `run_resumed`, `review_completed`, `ship_prepared`, `research_completed`, `task_cancelled`, `team_spawned`, `worktree_created`, `hud_attached`, `run_cancelled`.
+Event types: `run_created`, `phase_changed`, `task_started`, `task_completed`, `tool_called`, `test_ran`, `finding_emitted`, `repair_requested`, `run_accepted`, `run_rejected`, `run_resumed`, `review_completed`, `ship_prepared`, `research_completed`, `task_cancelled`, `team_spawned`, `worktree_created`, `hud_attached`, `run_cancelled`, `host_session_bound`.
+
+If MCP tools `omm_*` exist, use those instead of hand-writing these files.
 
 Schemas: `schemas/*.schema.json`.
