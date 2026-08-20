@@ -306,6 +306,7 @@ function loadSchemas() {
     "finding.schema.json",
     "evidence.schema.json",
     "planner-output.schema.json",
+    "worker-yield.schema.json",
   ];
   const schemas = {};
   for (const name of names) {
@@ -482,6 +483,9 @@ function checkCliPackage() {
     "harness.ts",
     "subagent.ts",
     "interview.ts",
+    "yield.ts",
+    "tps.ts",
+    "hash.ts",
   ]) {
     if (!existsSync(path.join(ROOT, "src", name))) err(`missing src/${name}`);
   }
@@ -507,6 +511,9 @@ function checkCliPackage() {
       "interview",
     ]) {
       if (!help.includes(cmd)) err(`CLI --help missing ${cmd}`);
+    }
+    if (!help.includes("--tps") || !help.includes("--allow-stub") || !help.includes("--smoke")) {
+      err("CLI --help must list doctor --smoke, --tps, and --allow-stub");
     }
     note("CLI --help lists max plan verify resume review ship research attach status cancel inspect team interview doctor install");
   } catch (error) {
@@ -567,6 +574,15 @@ function checkHonesty() {
   }
   if (!readme.includes("oh-my-mcode interview") || !readme.includes("--smoke")) {
     err("README must document interview and doctor --smoke");
+  }
+  if (!readme.includes("doctor --tps") && !readme.includes("--tps")) {
+    err("README must document doctor --tps");
+  }
+  if (!readme.includes("unmeasured")) {
+    err("README must say --tps prints unmeasured when the host is missing or stubbed");
+  }
+  if (/output_tps:\s*[0-9]/.test(readme) || /wall_tps:\s*[0-9]/.test(readme)) {
+    err("README must not invent live TPS numbers");
   }
   if (!readme.includes("docs/harness.md")) {
     err("README footer must link docs/harness.md");

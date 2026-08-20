@@ -11,6 +11,26 @@ import { loadConfig } from "./config.js";
 export const INSPECT_TOPICS = ["tools", "skills", "agents", "context", "runs", "model-policy"] as const;
 export type InspectTopic = (typeof INSPECT_TOPICS)[number];
 
+const RUN_LEAVES: Record<string, string> = {
+  findings: "findings.json",
+  evidence: "evidence/index.json",
+  events: "events.jsonl",
+  plan: "plan.md",
+  tasks: "tasks.json",
+  summary: "summary.md",
+  yield: "file-hashes.json",
+};
+
+export function parseRunAddress(value: string): { runId: string; leaf: string } | undefined {
+  const match = /^run:\/\/(run_[A-Za-z0-9]+)(?:\/([A-Za-z0-9._-]+))?$/.exec(value.trim());
+  if (!match?.[1]) return undefined;
+  return { runId: match[1], leaf: match[2] || "findings" };
+}
+
+export function runAddress(runId: string, leaf: keyof typeof RUN_LEAVES | string): string {
+  return `run://${runId}/${leaf}`;
+}
+
 export interface InspectResult {
   topic: InspectTopic;
   ok: boolean;
@@ -187,6 +207,37 @@ function inspectContext(workspace: string, runId?: string): InspectResult {
       host_session_id: run.host_session_id || null,
       host_continue: Boolean(run.host_continue),
       host_session_source: run.host_session_source || null,
+      addresses: {
+        findings: runAddress(id, "findings"),
+        evidence: runAddress(id, "evidence"),
+        events: runAddress(id, "events"),
+        plan: runAddress(id, "plan"),
+        summary: runAddress(id, "summary"),
+      },
+    },
+  };
+}
+
+function inspectRunAddress(workspace: string, address: string): InspectResult {
+  const parsed = parseRunAddress(address);
+  if (!parsed) {
+    return { topic: "context", ok: false, error: `invalid run address: ${address}`, data: { address } };
+  }
+  const store = new RunStore(workspace);
+  const rel = RUN_LEAVES[parsed.leaf] || parsed.leaf;
+  const full = path.join(store.dir(parsed.runId), rel);
+  const exists = existsSync(full);
+  return {
+    topic: "context",
+    ok: exists,
+    error: exists ? undefined : `store file not found for ${address}`,
+    data: {
+      address,
+      run_id: parsed.runId,
+      leaf: parsed.leaf,
+      path: full,
+      exists,
+      contents: exists ? readFileSync(full, "utf8").slice(0, 8000) : null,
     },
   };
 }
@@ -221,9 +272,10 @@ function inspectModelPolicy(workspace: string): InspectResult {
         output_schema: "planner: schemas/planner-output.schema.json",
         file: "verifier/review: latest test log and/or summary.md when present",
         prompt_prefix:
-          "Role: <explorer|planner|builder|verifier|release> + clipped agents/<role>.md + task body. Prefix shape is stable for evals/replay.",
+          "Role + goal + task packet + allowed files + acceptance + yield schema. Contract-only. Point at paths; do not paste file bodies.",
+        output_schema_workers: "schemas/worker-yield.schema.json (schemaMode=strict)",
       },
-      we_do_not_send: ["hooks", "custom plugin agents", "registered slash commands", "App UI payloads"],
+      we_do_not_send: ["hooks", "custom plugin agents", "registered slash commands", "App UI payloads", "raw host JSONL into the next worker prompt"],
       role_permissions: Object.fromEntries(ROLES.map((role) => [role, ROLE_CONTRACTS[role].permission])),
       note: "Project-manager duties stay in TypeScript. mcode exec is a worker, not a recursive scheduler.",
     },
@@ -236,9 +288,12 @@ export function runInspect(opts: {
   runId?: string;
   packageRoot?: string;
 }): InspectResult {
+  if (opts.topic.startsWith("run://")) {
+    return inspectRunAddress(opts.workspace, opts.topic);
+  }
   const topic = opts.topic as InspectTopic;
   if (!INSPECT_TOPICS.includes(topic)) {
-    throw new CliError(`inspect topic must be ${INSPECT_TOPICS.join("|")}`);
+    throw new CliError(`inspect topic must be ${INSPECT_TOPICS.join("|")} or run://<id>/findings`);
   }
   const root = opts.packageRoot || packageRoot();
   if (topic === "tools") return inspectTools();

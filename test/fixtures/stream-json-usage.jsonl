@@ -1,0 +1,4 @@
+{"_comment":"Documented stream-json usage fixture for parser tests. Not a live MiniMax capture. Do not treat these as measured TPS."}
+{"type":"message_start","usage":{"input_tokens":18,"output_tokens":0}}
+{"type":"assistant","text":"pong","first_token_ms":42}
+{"type":"result","usage":{"input_tokens":18,"output_tokens":1,"total_tokens":19,"duration_ms":250,"prompt_tokens":18,"completion_tokens":1},"structuredOutput":{"data":{"status":"ok","summary":"pong","findings":[],"artifacts":[]}}}

@@ -94,13 +94,14 @@ const TOOLS = [
   },
   {
     name: "omm_inspect",
-    description: "Inspect tools|skills|agents|context|runs|model-policy.",
+    description: "Inspect tools|skills|agents|context|runs|model-policy, or address run://<id>/findings.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
       required: ["topic"],
       properties: {
-        topic: { type: "string", enum: ["tools", "skills", "agents", "context", "runs", "model-policy"] },
+        topic: { type: "string", description: "tools|skills|agents|context|runs|model-policy or run://<id>/findings" },
+        address: { type: "string", description: "Alias for a run://<id>/leaf store path" },
         run_id: { type: "string" },
       },
     },
@@ -119,7 +120,7 @@ async function callTool(name, args = {}) {
   const workspace = workspaceOf();
   try {
     if (name === "omm_inspect") {
-      const topic = typeof args.topic === "string" ? args.topic : "";
+      const topic = typeof args.address === "string" && args.address ? args.address : typeof args.topic === "string" ? args.topic : "";
       if (!topic) return toolError("omm_inspect requires topic");
       if (!existsSync(INSPECT)) return toolError("dist/inspect.js missing; run npm run build");
       const inspect = await import(pathToFileURL(INSPECT).href);

@@ -41,9 +41,33 @@ A thread is a folder, not a prompt:
 
 Roles (`explorer` / `planner` / `builder` / `verifier` / `release`) are harness-spawned workers with a Task Contract. A worker callback cannot call `spawnSubagent`. Flat `team` is sibling builders scheduled in TypeScript, not a recursive prompt tree.
 
-## Token / cost
+## Structured worker yield
+
+A worker must finish with schema-validated JSON (`schemas/worker-yield.schema.json`, `schemaMode: strict`):
+
+```json
+{ "status": "ok|blocked|failed", "summary": "...", "findings": [], "artifacts": [], "file_hashes": {} }
+```
+
+The parent reads `structuredOutput.data` only. It does not parse worker prose and does not dump raw host JSONL into the next prompt. Invalid yield: one reminder, then fail and surface as a finding.
+
+## Team packet
+
+Flat team is one `{ context, tasks[] }` packet. `context` is injected into every builder. Workers do not spawn workers. Orchestrator remains the only scheduler (`drainBuilderWaves`).
+
+## Content hashes
+
+Evidence records store sha256 of artifact bytes. Verifier compares recorded hashes to live files. Stale hash → re-run deterministic tests and refuse Accept. This is the hashline *idea* (reject a stale anchor), not their edit language.
+
+Inspect/MCP can address store files as `run://<run_id>/findings` (and `evidence`, `events`, `plan`, `summary`).
+
+## Token / cost / TPS
 
 If host `stream-json` includes usage fields, we parse them and show them on `status`. Otherwise the HUD prints `Cache/cost: n/a if unknown`. We do not invent numbers.
+
+`oh-my-mcode doctor --tps` runs a real tiny host exec and reports `wall_ms`, token counts, `output_tps` / `wall_tps` when the host reported them, plus our prompt size (probe and a typical builder). Missing or fake host: print `unmeasured` and exit non-zero unless `--allow-stub`. Last report: `~/.minimax/oh-my-mcode/tps.json`.
+
+Oh My Pi feels fast mostly because of fewer wasted tokens and fewer retries, not a higher raw tok/s. We copy the yield / minimal-prompt / no-JSONL-leak pieces. We do not copy hashline-as-edit-tool, 31 tools, or grandchild agents.
 
 ## What this is not
 

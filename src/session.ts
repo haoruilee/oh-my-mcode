@@ -207,8 +207,9 @@ export async function execTracked(
   };
   const result = await execWithRepair(client, prepared, { store, runId });
   rememberHostSession(store, runId, result, prepared, opts);
-  const usage = extractUsage(result.events, result.rawLines);
+  const usage = result.usage || extractUsage(result.events, result.rawLines);
   if (usage) {
+    result.usage = usage;
     const current = store.load(runId);
     store.patchRun(runId, { usage: mergeUsage(current.usage, usage) });
   }

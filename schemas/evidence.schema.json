@@ -32,6 +32,10 @@
     },
     "notes": {
       "type": "string"
+    },
+    "sha256": {
+      "type": "string",
+      "description": "sha256 of the captured artifact bytes"
     }
   }
 }

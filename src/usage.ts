@@ -24,13 +24,26 @@ function fromRecord(rec: Record<string, unknown>): UsageTotals | undefined {
     asNumber(rec.total_cost_usd) ??
     asNumber(rec.cost) ??
     asNumber(rec.total_cost);
-  if (input === undefined && output === undefined && total === undefined && cost === undefined) return undefined;
+  const duration = asNumber(rec.duration_ms) ?? asNumber(rec.durationMs);
+  const first = asNumber(rec.first_token_ms) ?? asNumber(rec.firstTokenMs);
+  if (
+    input === undefined &&
+    output === undefined &&
+    total === undefined &&
+    cost === undefined &&
+    duration === undefined &&
+    first === undefined
+  ) {
+    return undefined;
+  }
   const usage: UsageTotals = {};
   if (input !== undefined) usage.input_tokens = input;
   if (output !== undefined) usage.output_tokens = output;
   if (total !== undefined) usage.total_tokens = total;
   else if (input !== undefined || output !== undefined) usage.total_tokens = (input || 0) + (output || 0);
   if (cost !== undefined) usage.cost_usd = cost;
+  if (duration !== undefined) usage.duration_ms = duration;
+  if (first !== undefined) usage.first_token_ms = first;
   return usage;
 }
 
@@ -50,7 +63,15 @@ function walk(value: unknown, depth = 0): UsageTotals | undefined {
     if (nested) return nested;
   }
   const direct = fromRecord(rec);
-  if (direct && (rec.usage || rec.input_tokens !== undefined || rec.prompt_tokens !== undefined || rec.cost_usd !== undefined)) {
+  if (
+    direct &&
+    (rec.usage ||
+      rec.input_tokens !== undefined ||
+      rec.prompt_tokens !== undefined ||
+      rec.cost_usd !== undefined ||
+      rec.duration_ms !== undefined ||
+      rec.first_token_ms !== undefined)
+  ) {
     return direct;
   }
   for (const key of ["result", "metadata", "message", "data"]) {
@@ -80,6 +101,8 @@ export function extractUsage(events: StreamEvent[], rawLines: string[] = []): Us
       output_tokens: found.output_tokens ?? merged?.output_tokens,
       total_tokens: found.total_tokens ?? merged?.total_tokens,
       cost_usd: found.cost_usd ?? merged?.cost_usd,
+      duration_ms: found.duration_ms ?? merged?.duration_ms,
+      first_token_ms: found.first_token_ms ?? merged?.first_token_ms,
     };
   }
   return merged;
@@ -103,6 +126,11 @@ export function mergeUsage(current: UsageTotals | undefined, next: UsageTotals |
   if (output) merged.output_tokens = output;
   if (total) merged.total_tokens = total;
   if (cost !== undefined) merged.cost_usd = cost;
+  if (current.duration_ms != null || next.duration_ms != null) {
+    merged.duration_ms = (current.duration_ms || 0) + (next.duration_ms || 0);
+  }
+  if (current.first_token_ms != null) merged.first_token_ms = current.first_token_ms;
+  else if (next.first_token_ms != null) merged.first_token_ms = next.first_token_ms;
   return Object.keys(merged).length ? merged : undefined;
 }
 

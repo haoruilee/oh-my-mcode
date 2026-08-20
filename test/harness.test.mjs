@@ -192,7 +192,22 @@ test("subagent spawn records one exec; worker cannot spawn a grandchild", async 
         ),
       (error) => error instanceof CliError && /grandchildren/.test(error.message),
     );
-    return { text: `${req.role} ok`, events: [], exitCode: 0, rawLines: [] };
+    return {
+      text: `${req.role} ok`,
+      structuredOutput: { data: { status: "ok", summary: `${req.role} ok`, findings: [], artifacts: [] } },
+      events: [
+        {
+          raw: {
+            type: "result",
+            structuredOutput: { data: { status: "ok", summary: `${req.role} ok`, findings: [], artifacts: [] } },
+          },
+          type: "result",
+          text: `${req.role} ok`,
+        },
+      ],
+      exitCode: 0,
+      rawLines: [],
+    };
   });
   const store = new RunStore(tmp());
   const run = store.create("one worker");
@@ -243,4 +258,5 @@ test("bin help lists interview", () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /interview/);
   assert.match(result.stdout, /--smoke/);
+  assert.match(result.stdout, /--tps/);
 });

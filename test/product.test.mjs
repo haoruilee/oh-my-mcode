@@ -15,6 +15,7 @@ import { main } from "../dist/cli.js";
 import { attachHud, renderHud, loadHud } from "../dist/hud.js";
 import { inspectSkills, runInspect } from "../dist/inspect.js";
 import { readyBuilders } from "../dist/team.js";
+import { plannerYield, yieldResult } from "./helpers/yield.mjs";
 
 function project(testScript = "node -e \"process.exit(0)\"") {
   const dir = mkdtempSync(path.join(os.tmpdir(), "omm-prod-"));
@@ -28,15 +29,15 @@ function project(testScript = "node -e \"process.exit(0)\"") {
 }
 
 function stubOk() {
-  return new StubMcode(async (req) => ({
-    text:
-      req.role === "planner"
-        ? '```json\n{"tasks":[{"id":"T1","title":"one change","role":"builder","depends_on":[]}],"acceptance":[{"id":"A1","criterion":"npm test","kind":"test","command":"npm test"}]}\n```'
-        : `${req.role} ok`,
-    events: [],
-    exitCode: 0,
-    rawLines: [],
-  }));
+  return new StubMcode(async (req) => {
+    if (req.role === "planner") {
+      return plannerYield({
+        tasks: [{ id: "T1", title: "one change", role: "builder", depends_on: [] }],
+        acceptance: [{ id: "A1", criterion: "npm test", kind: "test", command: "npm test" }],
+      });
+    }
+    return yieldResult(`${req.role} ok`);
+  });
 }
 
 test("review does not Accept", async () => {
@@ -68,7 +69,7 @@ test("research does not edit (no builder)", async () => {
   const roles = [];
   const mcode = new StubMcode(async (req) => {
     roles.push(req.role);
-    return { text: "map: src/auth.js", events: [], exitCode: 0, rawLines: [] };
+    return yieldResult("map: src/auth.js");
   });
   const run = await runResearch({ workspace, goal: "how does auth work", mcode });
   assert.ok(!roles.includes("builder"));
@@ -136,20 +137,15 @@ test("team schedules independent tasks", async () => {
   const mcode = new StubMcode(async (req) => {
     roles.push(req.role);
     if (req.role === "planner") {
-      return {
-        text: `\`\`\`json\n${JSON.stringify({
-          tasks: [
-            { id: "T1", title: "inspect auth", role: "builder", depends_on: [] },
-            { id: "T2", title: "implement rotation", role: "builder", depends_on: [] },
-          ],
-          acceptance: [{ id: "A1", criterion: "npm test", kind: "test", command: "npm test" }],
-        })}\n\`\`\``,
-        events: [],
-        exitCode: 0,
-        rawLines: [],
-      };
+      return plannerYield({
+        tasks: [
+          { id: "T1", title: "inspect auth", role: "builder", depends_on: [] },
+          { id: "T2", title: "implement rotation", role: "builder", depends_on: [] },
+        ],
+        acceptance: [{ id: "A1", criterion: "npm test", kind: "test", command: "npm test" }],
+      });
     }
-    return { text: `${req.role} ok`, events: [], exitCode: 0, rawLines: [] };
+    return yieldResult(`${req.role} ok`);
   });
   const graph = {
     run_id: "run_x",

@@ -24,6 +24,7 @@ import type {
   TaskGraph,
 } from "./types.js";
 import { EVENT_TYPES, PHASES, STATUSES } from "./types.js";
+import { hashesMatch, sha256Bytes, sha256File, type StaleHash } from "./hash.js";
 
 function emptyTasks(runId: string): TaskGraph {
   return {
@@ -335,6 +336,8 @@ export class RunStore {
       if (extra.command) record.command = extra.command;
       if (extra.exit_code !== undefined) record.exit_code = extra.exit_code;
       if (extra.notes) record.notes = extra.notes;
+      const digest = sha256File(path.join(this.dir(runId), destRel));
+      if (digest) record.sha256 = digest;
       index.items.push(record);
       writeJson(path.join(this.dir(runId), "evidence/index.json"), index);
       const eventType: EventType = kind === "test" ? "test_ran" : "tool_called";
@@ -374,6 +377,40 @@ export class RunStore {
     return index.items.every((item) => existsSync(path.join(this.dir(runId), item.path)));
   }
 
+  staleEvidence(runId: string): StaleHash[] {
+    const stale: StaleHash[] = [];
+    for (const item of this.loadEvidence(runId).items) {
+      if (!item.sha256) continue;
+      const actual = sha256File(path.join(this.dir(runId), item.path));
+      if (!hashesMatch(item.sha256, actual)) {
+        stale.push({ path: item.path, expected: item.sha256, actual });
+      }
+    }
+    return stale;
+  }
+
+  loadFileHashes(runId: string): Record<string, string> {
+    const raw = this.readArtifact(runId, "file-hashes.json");
+    if (!raw.trim()) return {};
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const out: Record<string, string> = {};
+      for (const [key, value] of Object.entries(parsed)) {
+        if (typeof value === "string") out[key] = value;
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  mergeFileHashes(runId: string, hashes?: Record<string, string>): Record<string, string> {
+    if (!hashes || Object.keys(hashes).length === 0) return this.loadFileHashes(runId);
+    const merged = { ...this.loadFileHashes(runId), ...hashes };
+    this.writeArtifact(runId, "file-hashes.json", `${JSON.stringify(merged, null, 2)}\n`);
+    return merged;
+  }
+
   writeFindings(runId: string, findings: Findings): { run: RunRecord; findings: Findings } {
     findings.run_id = runId;
     if (!findings.checked_at) findings.checked_at = nowIso();
@@ -384,6 +421,12 @@ export class RunStore {
       if (!this.evidenceFilesExist(runId)) {
         throw new CliError("cannot mark Accepted without evidence files");
       }
+      const stale = this.staleEvidence(runId);
+      if (stale.length > 0) {
+        throw new CliError(
+          `cannot mark Accepted on stale evidence (${stale.map((item) => item.path).join(", ")})`,
+        );
+      }
       const failed = (findings.acceptance || []).filter((item) => item.result !== "pass");
       if (failed.length > 0) {
         throw new CliError(`cannot mark Accepted while acceptance is not all pass (${failed.map((a) => a.id).join(", ")})`);
@@ -392,6 +435,13 @@ export class RunStore {
       if (blockers.length > 0) {
         throw new CliError("cannot mark Accepted with blocker/major findings");
       }
+    }
+    for (const finding of findings.findings || []) {
+      if (finding.sha256) continue;
+      const material =
+        (finding.evidence || []).map((rel) => this.readArtifact(runId, rel)).join("\n") ||
+        `${finding.title}\n${finding.detail}`;
+      finding.sha256 = sha256Bytes(material);
     }
     return this.withLock(runId, () => {
       writeJson(path.join(this.dir(runId), "findings.json"), findings);

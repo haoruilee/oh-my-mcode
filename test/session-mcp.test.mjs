@@ -10,6 +10,7 @@ import { runReview } from "../dist/review.js";
 import { StubMcode } from "../dist/mcode.js";
 import { RunStore } from "../dist/store.js";
 import { runInspect } from "../dist/inspect.js";
+import { plannerYield, yieldResult } from "./helpers/yield.mjs";
 
 const SESSION_ID = "host-sess-abc";
 
@@ -34,16 +35,19 @@ function plannerText() {
 function stubRecording(requests, { sessionId = SESSION_ID, includeSession = true } = {}) {
   return new StubMcode(async (req) => {
     requests.push(req);
-    const text = req.role === "planner" ? plannerText() : `${req.role} ok`;
-    const raw = includeSession
-      ? { type: "result", session_id: sessionId, text }
-      : { type: "assistant", text };
-    return {
-      text,
-      events: [{ raw, type: raw.type, text }],
-      exitCode: 0,
-      rawLines: [JSON.stringify(raw)],
-    };
+    const base =
+      req.role === "planner"
+        ? plannerYield({
+            tasks: [{ id: "T1", title: "one change", role: "builder", depends_on: [] }],
+            acceptance: [{ id: "A1", criterion: "npm test", kind: "test", command: "npm test" }],
+          })
+        : yieldResult(`${req.role} ok`);
+    if (includeSession) {
+      const raw = { ...base.events[0].raw, session_id: sessionId };
+      base.events = [{ raw, type: "result", text: base.text }];
+      base.rawLines = [JSON.stringify(raw)];
+    }
+    return base;
   });
 }
 

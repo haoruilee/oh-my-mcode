@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/haoruilee/oh-my-mcode/schemas/worker-yield.schema.json",
+  "title": "Oh My MiniMax Code worker yield",
+  "description": "Schema-validated structured output from a harness-spawned role worker. Parent reads this object only — never worker prose or raw host JSONL.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "summary", "findings", "artifacts"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "blocked", "failed"]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "title", "detail", "evidence"],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["blocker", "major", "minor", "note"]
+          },
+          "title": { "type": "string", "minLength": 1 },
+          "detail": { "type": "string" },
+          "evidence": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "file_hashes": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

@@ -53,9 +53,12 @@ agents/*.md           role contracts for the same host agent
 scripts/run-store.mjs atomic run store (TUI-safe, no extra CLI)
 scripts/doctor.mjs    package + sample-run checks
 src/harness.ts        one core: submit / subscribe / bind a run
-src/subagent.ts       one role worker, no grandchildren
+src/subagent.ts       one role worker, no grandchildren; schema-validated yield
+src/yield.ts          strict worker yield (parent reads structuredOutput.data only)
+src/tps.ts            doctor --tps (unmeasured on stub)
+src/hash.ts           content-hash evidence; stale hash refuses Accept
 src/*.ts              store/verify machine; CLI and MCP call submit
-schemas/*.schema.json events, tasks, findings, evidence
+schemas/*.schema.json events, tasks, findings, evidence, worker-yield
 docs/harness.md       Codex-as-platform map (host-honest)
 ```
 
@@ -69,7 +72,7 @@ One host session per run (`run.json.host_session_id`). Parallel team worktrees m
 
 Workflow YAML under `workflows/` is parsed by `src/workflows.ts` and drives stop-after / phase lists.
 
-Flat team (`src/team.ts`) schedules independent builders via `spawnSubagent`. Optional worktrees: `src/worktree.ts`. HUD: `src/hud.ts`. Config: `src/config.ts`. Tool repair: `src/tool-repair.ts`. Interview intake: `src/interview.ts`.
+Flat team (`src/team.ts`) schedules independent builders via `spawnSubagent` with one `{ context, tasks[] }` packet. Optional worktrees: `src/worktree.ts`. HUD: `src/hud.ts`. Config: `src/config.ts`. Tool repair: `src/tool-repair.ts`. Interview intake: `src/interview.ts`. Worker prompts are contract-only (`src/prompts.ts`).
 
 ## What we will not do
 

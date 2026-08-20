@@ -3,7 +3,8 @@ import { RunStore } from "./store.js";
 import { ProcessMcode, resolveMcodeInvocation, type McodeClient } from "./mcode.js";
 import { McodeMissingError } from "./util.js";
 import { explorerPrompt } from "./prompts.js";
-import { applyRequestedSession, emitHostSessionHints, execTracked } from "./session.js";
+import { applyRequestedSession, emitHostSessionHints } from "./session.js";
+import { spawnSubagent } from "./subagent.js";
 import { loadWorkflow } from "./workflows.js";
 
 export interface ResearchOptions {
@@ -39,19 +40,22 @@ export async function runResearch(opts: ResearchOptions): Promise<RunRecord> {
   applyRequestedSession(store, run.run_id, opts);
   store.setPhase(run.run_id, "DISCOVER");
   const client = requireClient(opts, store, run.run_id);
-  const result = await execTracked(
-    client,
-    store,
-    run.run_id,
+  const result = await spawnSubagent(
     {
+      role: "explorer",
+      contract: {
+        task_id: "research",
+        objective: run.goal,
+        acceptance: ["Write a research note. Do not edit product files."],
+        constraints: ["DISCOVER only", "Do not spawn", "Do not Accept"],
+      },
+      permission: opts.permission === "full" ? "ask" : opts.permission || "ask",
       cwd: opts.workspace,
       prompt: explorerPrompt(run.goal),
-      role: "explorer",
-      permission: opts.permission === "full" ? "ask" : opts.permission || "ask",
     },
-    opts,
+    { client, store, runId: run.run_id, sessionOpts: opts },
   );
-  const note = `# Research\n\nTopic: ${run.goal}\n\nThis run is DISCOVER-only. No builder. No product edits.\n\n## Explorer\n\n${result.text || "(no explorer output)"}\n`;
+  const note = `# Research\n\nTopic: ${run.goal}\n\nThis run is DISCOVER-only. No builder. No product edits.\n\n## Explorer\n\n${result.yield.summary || "(no explorer yield)"}\n`;
   store.writeArtifact(run.run_id, "research.md", note);
   store.writeTextEvidence(run.run_id, "log", "research.md", note, { notes: "research" });
   store.writeTextEvidence(run.run_id, "log", "mcode-discover.jsonl", result.rawLines.join("\n") || result.text || "(empty)", {

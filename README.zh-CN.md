@@ -36,6 +36,7 @@ oh-my-mcode max "fix the failing auth tests and prove they pass"
 | **插件 + CLI** | `npx oh-my-mcode install` | 复制到 `~/.minimax/plugins/oh-my-mcode` |
 | **健康检查** | `npx oh-my-mcode doctor` | 包装 + 宿主检查。不联网。 |
 | **宿主冒烟** | `oh-my-mcode doctor --smoke` | 一次极小的 `mcode exec`（`pong`）+ 延迟 |
+| **宿主 TPS** | `oh-my-mcode doctor --tps` | 真的 `mcode exec` stream-json 用量。缺宿主或假宿主打印 `unmeasured` 并无零退出，除非 `--allow-stub` |
 | **从 git（尚未发 npm）** | `npx github:haoruilee/oh-my-mcode install --yes` | 同一套落盘，不依赖 registry |
 
 ```bash
@@ -74,7 +75,7 @@ oh-my-mcode install
 | 🔌 | **MCP** | 同一套 harness 上的 stdio 工具：创建 / 查看 / 列出 / status / verify / interview / inspect。 |
 | 👥 | **`team`** | TypeScript 扁平调度独立 builder。显式开启。默认仍是顺序 `max`。 |
 | 🖥️ | **HUD** | `attach` / `status` 读同一份 `.minimax/runs/<id>/`。没有假装的 App 面板。宿主 stream 有用量就显示。 |
-| 🩺 | **`doctor`** | 宿主 + 包装诚实检查。`--smoke` 是一次真的 pong exec。清单有、磁盘没有？那是错误。 |
+| 🩺 | **`doctor`** | 宿主 + 包装诚实检查。`--smoke` 是一次真的 pong exec。`--tps` 测宿主 tok/s，假宿主只打印 `unmeasured`，不编数字。 |
 | 🧪 | **Evals** | 夹具测试台（pass / fail-then-repair / plan-only）。不是生产 ΔY 统计。 |
 
 ## Power commands
@@ -93,6 +94,7 @@ oh-my-mcode team "split independent builder tasks"
 oh-my-mcode attach --watch
 oh-my-mcode inspect skills
 oh-my-mcode doctor --smoke
+oh-my-mcode doctor --tps
 ```
 
 TUI 里说 `max mode: …` 或 `interview this goal`。Skill 靠措辞触发。

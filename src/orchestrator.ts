@@ -9,8 +9,9 @@ import {
   judgeEvidenceFiles,
   type SessionOpts,
 } from "./session.js";
-import { spawnSubagent } from "./subagent.js";
+import { spawnSubagent, type SpawnResult } from "./subagent.js";
 import { interviewContext } from "./interview.js";
+import { looksLikePlannerGraph } from "./yield.js";
 import {
   detectProjectCommands,
   findingsFromDeterministic,
@@ -19,7 +20,7 @@ import {
   runDeterministicVerify,
 } from "./verify.js";
 import { builderPrompt, explorerPrompt, plannerPrompt, plannerTeamPrompt, repairPrompt } from "./prompts.js";
-import { drainBuilderWaves } from "./team.js";
+import { buildTeamPacket, drainBuilderWaves } from "./team.js";
 import { cleanupRunWorktrees, createWorktree, mergeWorktree } from "./worktree.js";
 import { loadWorkflow } from "./workflows.js";
 
@@ -61,8 +62,16 @@ function extractJsonBlock(text: string): unknown {
   }
 }
 
-function tasksFromPlanner(runId: string, goal: string, plannerText: string): TaskGraph {
-  const parsed = extractJsonBlock(plannerText) as
+function plannerGraphFromResult(result: ExecResult): unknown {
+  const data = result.structuredOutput && typeof result.structuredOutput === "object" ? result.structuredOutput.data : undefined;
+  if (looksLikePlannerGraph(data)) return data;
+  const fromText = extractJsonBlock(result.text || "");
+  if (looksLikePlannerGraph(fromText)) return fromText;
+  return undefined;
+}
+
+function tasksFromPlanner(runId: string, goal: string, result: ExecResult): TaskGraph {
+  const parsed = plannerGraphFromResult(result) as
     | { tasks?: TaskItem[]; acceptance?: TaskGraph["acceptance"] }
     | undefined;
   if (parsed?.tasks?.length && parsed.acceptance?.length) {
@@ -159,8 +168,23 @@ function shouldRun(current: Phase, min: Phase, resumeFrom?: Phase): boolean {
   return order.indexOf(start) <= order.indexOf(min) && current !== "ACCEPT";
 }
 
+function yieldSummary(result: ExecResult, fallback = ""): string {
+  const worker = "yield" in result ? (result as SpawnResult).yield : undefined;
+  if (worker?.summary) return worker.summary;
+  return fallback;
+}
+
 async function persistExec(store: RunStore, runId: string, phase: string, result: ExecResult): Promise<void> {
-  store.writeTextEvidence(runId, "log", `mcode-${phase}.jsonl`, result.rawLines.join("\n") || result.text || "(empty)", {
+  const worker = "yield" in result ? (result as SpawnResult).yield : undefined;
+  if (worker) {
+    store.writeArtifact(runId, `yield-${phase}.json`, `${JSON.stringify(worker, null, 2)}\n`);
+    store.writeTextEvidence(runId, "log", `yield-${phase}.json`, JSON.stringify(worker), {
+      notes: "structured worker yield",
+      exit_code: result.exitCode,
+    });
+    store.mergeFileHashes(runId, worker.file_hashes);
+  }
+  store.writeTextEvidence(runId, "log", `mcode-${phase}.jsonl`, result.rawLines.join("\n") || "(jsonl not dumped into prompts)", {
     command: `mcode exec (${phase})`,
     exit_code: result.exitCode,
   });
@@ -182,7 +206,7 @@ async function execRole(
   req: ExecRequest,
   opts: OrchestratorOptions,
   extra: SessionOpts = {},
-): Promise<ExecResult> {
+): Promise<SpawnResult> {
   return spawnSubagent(
     {
       role: req.role,
@@ -306,10 +330,19 @@ async function executeOneBuilder(
   store.writeTasks(runId, tasks);
   store.appendEvent(runId, "task_started", { title: task.title }, { task_id: task.id });
   const prior = store.loadFindings(runId);
+  const run = store.load(runId);
+  const packet = buildTeamPacket({
+    goal: run.goal,
+    discovery: discoveryText(store, runId),
+    interview: interviewContext(store, runId),
+    tasks: tasks.tasks,
+  });
+  store.writeArtifact(runId, "team-packet.json", `${JSON.stringify(packet, null, 2)}\n`);
+  const compactFindings = (prior?.findings || []).map((item) => `${item.severity}: ${item.title}`).join("\n");
   const prompt =
     prior && prior.verdict === "rejected"
-      ? repairPrompt(contractFor(task, tasks), JSON.stringify(prior.findings, null, 2))
-      : builderPrompt(contractFor(task, tasks));
+      ? repairPrompt(contractFor(task, tasks), compactFindings, packet.context)
+      : builderPrompt(contractFor(task, tasks), packet.context);
   let cwd = opts.workspace;
   let worktree: ReturnType<typeof createWorktree> | undefined;
   if (opts.worktree) {
@@ -369,8 +402,8 @@ async function drive(
       opts,
     );
     await persistExec(store, runId, "discover", result);
-    store.writeTextEvidence(runId, "log", "discover.md", result.text || "(no explorer output)", {
-      notes: "explorer",
+    store.writeTextEvidence(runId, "log", "discover.md", yieldSummary(result, "(no explorer yield)"), {
+      notes: "explorer yield.summary",
     });
     run = store.load(runId);
   }
@@ -394,8 +427,8 @@ async function drive(
       opts,
     );
     await persistExec(store, runId, "plan", result);
-    store.writePlan(runId, planMarkdown(run.goal, discoverBody, result.text));
-    store.writeTasks(runId, tasksFromPlanner(runId, run.goal, result.text));
+    store.writePlan(runId, planMarkdown(run.goal, discoverBody, yieldSummary(result, "planner yield")));
+    store.writeTasks(runId, tasksFromPlanner(runId, run.goal, result));
   }
 
   if (ctrl.stopAfter === "PLAN_REVIEW" || shouldRun(store.load(runId).phase, "PLAN_REVIEW", ctrl.resumeFrom)) {
@@ -493,7 +526,11 @@ async function verifyPhase(
 ): Promise<"accepted" | "rejected"> {
   store.setPhase(runId, "VERIFY", "active");
   emit(opts, "phase VERIFY (deterministic first)");
-  const det = await runDeterministicVerify(store, runId, opts.workspace);
+  let det = await runDeterministicVerify(store, runId, opts.workspace);
+  if (det.findings.some((item) => item.title.startsWith("Stale content hash"))) {
+    emit(opts, "stale content hash; re-running deterministic tests");
+    det = await runDeterministicVerify(store, runId, opts.workspace);
+  }
   const extra: Findings["findings"] = [];
   if (opts.llmVerify !== false && client) {
     try {
@@ -512,14 +549,14 @@ async function verifyPhase(
         opts,
       );
       await persistExec(store, runId, "verify-llm", judged);
-      const parsed = extractJsonBlock(judged.text) as { blockers?: { title: string; detail: string }[] } | undefined;
-      if (parsed?.blockers?.length) {
-        for (const [i, item] of parsed.blockers.entries()) {
+      if (judged.yield.findings.length) {
+        for (const [i, item] of judged.yield.findings.entries()) {
           extra.push({
             id: `F${det.findings.length + i + 1}`,
-            severity: "major",
+            severity: item.severity,
             title: item.title,
             detail: item.detail,
+            evidence: item.evidence,
           });
         }
       }

@@ -36,6 +36,7 @@ Requires Node 22+ and MiniMax Code CLI **`mcode` 0.1.6** (`@minimax-ai/code`).
 | **Plugin + CLI** | `npx oh-my-mcode install` | Copy into `~/.minimax/plugins/oh-my-mcode` |
 | **Health check** | `npx oh-my-mcode doctor` | Package + host checks. No network. |
 | **Host smoke** | `oh-my-mcode doctor --smoke` | One tiny `mcode exec` (`pong`) + latency |
+| **Host TPS** | `oh-my-mcode doctor --tps` | Real `mcode exec` stream-json usage. Stub/missing host prints `unmeasured` and exits non-zero unless `--allow-stub` |
 | **From git (until npm publish)** | `npx github:haoruilee/oh-my-mcode install --yes` | Same drop-in, no registry publish required |
 
 ```bash
@@ -74,7 +75,7 @@ Do **not** install this from [MiniMax-AI/skills](https://github.com/MiniMax-AI/s
 | 🔌 | **MCP** | Dependency-free stdio tools on the same harness: create / show / list / status / verify / interview / inspect. |
 | 👥 | **`team`** | Flat TypeScript scheduling of independent builders. Explicit. Sequential `max` stays the default. |
 | 🖥️ | **HUD** | `attach` / `status` read the same `.minimax/runs/<id>/` folder. No fake App panels. Tokens/cost when the host stream has them. |
-| 🩺 | **`doctor`** | Host + package honesty. `--smoke` is a real pong exec. Skill listed but missing on disk? That's an error. |
+| 🩺 | **`doctor`** | Host + package honesty. `--smoke` is a real pong exec. `--tps` measures host tok/s or prints `unmeasured` — it will not invent numbers on fake-mcode. |
 | 🧪 | **Evals** | Fixture harness (pass / fail-then-repair / plan-only). Not a production ΔY claim. |
 
 ## Power commands
@@ -93,6 +94,7 @@ oh-my-mcode team "split independent builder tasks"
 oh-my-mcode attach --watch
 oh-my-mcode inspect skills
 oh-my-mcode doctor --smoke
+oh-my-mcode doctor --tps
 ```
 
 In the TUI, say `max mode: …` or `interview this goal`. Skills trigger on phrasing.

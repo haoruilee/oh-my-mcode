@@ -80,7 +80,7 @@ async function evalFailThenRepair() {
     workspace,
     goal: "eval fail-then-repair: fix until tests pass",
     mcode: stub(async (req) => {
-      if (req.role === "builder" && /Previous verifier findings/i.test(req.prompt)) {
+      if (req.role === "builder" && /Repair only these findings/i.test(req.prompt)) {
         writeFileSync(path.join(req.cwd, ".repaired"), "ok\n");
       }
       return undefined;

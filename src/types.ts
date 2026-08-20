@@ -80,6 +80,8 @@ export interface UsageTotals {
   output_tokens?: number;
   total_tokens?: number;
   cost_usd?: number;
+  duration_ms?: number;
+  first_token_ms?: number;
 }
 
 export interface RunEvent {
@@ -124,6 +126,7 @@ export interface FindingItem {
   title: string;
   detail: string;
   evidence?: string[];
+  sha256?: string;
 }
 
 export interface Findings {
@@ -143,6 +146,7 @@ export interface EvidenceRecord {
   exit_code?: number;
   recorded_at: string;
   notes?: string;
+  sha256?: string;
 }
 
 export interface EvidenceIndex {

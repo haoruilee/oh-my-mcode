@@ -59,9 +59,68 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 7. **Hero stays `max`?** Yes — implementation detail of `max` / `team`.
 8. **Codex-as-platform fit?** Worker = harness-spawned role with a contract. Orchestrator remains the only scheduler.
 
+## 6. Structured worker yield
+
+1. **Verified delivery?** Yes — the parent reads a schema-validated object (`status`, `summary`, `findings`, `artifacts`, optional `file_hashes`). Invalid yield fails the worker, retries once with the validator error, then becomes a finding. That is typed delivery, not another chat log.
+2. **Harness not prompt pack?** Yes — `src/yield.ts` + `schemas/worker-yield.schema.json`. `schemaMode: strict`. Role files stayed short.
+3. **One core, many surfaces?** Parent (`orchestrator` / `harness` consumers) reads `structuredOutput.data` only. CLI and MCP do not parse worker prose.
+4. **Subagents are workers not trees?** Yield does not add a spawn API. One reminder, then fail. No grandchild channel.
+5. **MiniMax-native?** Yes — host `--output-schema` when the role is not planner. Planner keeps `planner-output.schema.json`; a planner graph is not treated as a yield.
+6. **Host honesty?** We do not dump raw host JSONL into the next prompt (the Claude Code leak Oh My Pi called out). JSONL may be stored as evidence.
+7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `team`.
+8. **Codex-as-platform fit?** Worker turn returns a typed object. EQ can record the artifact. SQ does not change.
+
+## 7. Batch fan-out / team packet
+
+1. **Verified delivery?** Yes — one `{ context, tasks[] }` packet. Shared context is injected; workers still cannot Accept.
+2. **Harness not prompt pack?** Yes — `buildTeamPacket` in `src/team.ts`. Existing `drainBuilderWaves` / semaphore stay.
+3. **One core, many surfaces?** Orchestrator is the only scheduler. No new MCP spawn.
+4. **Subagents are workers not trees?** **Pass.** Workers do not spawn workers. No FUSE/overlay isolation.
+5. **MiniMax-native?** Flat team, five roles. Not Agent Hub.
+6. **Host honesty?** Host still owns edit/read/bash. We schedule; we do not replace tools.
+7. **Hero stays `max`?** Yes — `team` remains a power tool.
+8. **Codex-as-platform fit?** One packet per wave. Thread stays the run.
+
+## 8. Content-hash evidence (hashline idea, not the edit language)
+
+1. **Verified delivery?** Yes — evidence and findings carry sha256 of artifact bytes. If a recorded hash no longer matches the live file, Accept is refused and deterministic tests re-run. Stale = reject/repair.
+2. **Harness not prompt pack?** Yes — `src/hash.ts` + store/verify TypeScript.
+3. **One core, many surfaces?** `run://<id>/findings` is inspect/MCP addressing to store files, not a VFS.
+4. **Subagents are workers not trees?** N/A — hashes do not spawn.
+5. **MiniMax-native?** Yes — no `[PATH#TAG]`, no PUT/CUT, no `@oh-my-pi/hashline`. Hashline stays their edit tool.
+6. **Host honesty?** We do not teach `mcode` an edit DSL. Host edit tool stays host-owned.
+7. **Hero stays `max`?** Yes.
+8. **Codex-as-platform fit?** Evidence records are store artifacts. Stale hash is an approval failure.
+
+## 9. Minimal worker prompts
+
+1. **Verified delivery?** Yes — contract-only prompts (role, goal, packet, allowed files, acceptance, yield schema) reduce wasted tokens that hide real failures. Point at paths; host already has read.
+2. **Harness not prompt pack?** Yes — this *removes* the old role-file dump. Speed copy from Oh My Pi issue #4991 (inheriting the full harness prompt burns unused tokens).
+3. **One core, many surfaces?** Same `src/prompts.ts` for CLI and workers.
+4. **Subagents are workers not trees?** Prompts say do not spawn.
+5. **MiniMax-native?** No OMO mythology, no ultrathink/orchestrate, no 32 agents.
+6. **Host honesty?** We measure prompt chars + rough tokens in `--tps` so the harness tax is visible.
+7. **Hero stays `max`?** Yes.
+8. **Codex-as-platform fit?** Smaller turn payload. Model quality stays the host's.
+
+## 10. Real TPS measurement
+
+1. **Verified delivery?** Yes — a real tiny `mcode exec --output-format stream-json` (`reply with exactly pong and nothing else`). If the host is missing or fake, print `unmeasured` and exit non-zero unless `--allow-stub`. We do not invent live tok/s.
+2. **Harness not prompt pack?** Yes — `src/tps.ts`. Persist last report at `~/.minimax/oh-my-mcode/tps.json`.
+3. **One core, many surfaces?** CLI `doctor --tps` only. Tests parse a documented stream-json fixture, not a live capture.
+4. **Subagents are workers not trees?** N/A — one probe exec.
+5. **MiniMax-native?** Uses host `mcode exec`. `ExecResult.usage` parses common usage keys.
+6. **Host honesty?** **Pass, enforced.** Stub host cannot report a fake `output_tps`. Docs do not invent numbers. Fast *feeling* is fewer wasted tokens/retries, not a higher raw tok/s than MiniMax already claims.
+7. **Hero stays `max`?** Yes — doctor is a power tool.
+8. **Codex-as-platform fit?** Health submission against the host runtime.
+
 ## Failures we refused
 
 - Did not add a second JSON-RPC next to MCP.
 - Did not register `/max` or host hooks.
 - Did not let interview or research Accept.
 - Did not give workers a `spawn` handle.
+- Did not port hashline as an edit language or teach `[PATH#TAG]` / PUT/CUT to `mcode`.
+- Did not add LSP, DAP, browser, memory bank, magic keywords, advisor TUI, or 31 tools.
+- Did not clone Agent Hub or spawn grandchildren.
+- Did not invent live TPS numbers when the host was stubbed.

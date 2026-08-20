@@ -2,6 +2,7 @@
 import { CliError, McodeMissingError, log } from "./util.js";
 import { RunStore } from "./store.js";
 import { runDoctor, formatDoctor } from "./doctor.js";
+import { formatTps, runDoctorTps } from "./tps.js";
 import { installPlugin } from "./install.js";
 import { runMax, runPlan, runResume, runTeam } from "./orchestrator.js";
 import { PERMISSIONS, type Permission } from "./types.js";
@@ -33,7 +34,7 @@ Commands:
   attach [run_id]    Live HUD of the run store
   status [run_id]    One-shot HUD
   cancel [run_id]    Mark cancelled and persist the event
-  inspect <topic>    tools|skills|agents|context|runs|model-policy
+  inspect <topic>    tools|skills|agents|context|runs|model-policy|run://<id>/findings
   team <task>        Flat team mode (explicit; sequential max is default)
   interview <goal>   Capture goal/constraints/acceptance; stop at PLAN_REVIEW
   doctor             Host + package health
@@ -58,6 +59,8 @@ Options:
   --commit               ship: local commit if git is clean enough; push only then
   --package-only         doctor: skip mcode-on-PATH (CI)
   --smoke                doctor: one tiny mcode exec (pong)
+  --tps                  doctor: real host tok/s (unmeasured if stub)
+  --allow-stub           doctor --tps: allow fake-mcode (still unmeasured)
   --yes                  install: non-interactive
   --answers FILE         interview: skip prompts, load JSON
   --constraint TEXT      interview: repeatable; non-TTY without --answers
@@ -84,6 +87,7 @@ Examples:
   oh-my-mcode ship
   oh-my-mcode doctor
   oh-my-mcode doctor --smoke
+  oh-my-mcode doctor --tps
   oh-my-mcode interview "fix auth"
   npx oh-my-mcode install --yes
 `;
@@ -106,6 +110,8 @@ interface Flags {
   commit?: boolean;
   "package-only"?: boolean;
   smoke?: boolean;
+  tps?: boolean;
+  "allow-stub"?: boolean;
   yes?: boolean;
   answers?: string;
   constraint?: string[];
@@ -132,6 +138,8 @@ const BOOL_FLAGS = new Set([
   "no-session",
   "continue",
   "smoke",
+  "tps",
+  "allow-stub",
   "yes",
   "interview",
 ]);
@@ -255,9 +263,14 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
 
   if (command === "doctor") {
     const report = runDoctor({ packageOnly: Boolean(flags["package-only"]), smoke: Boolean(flags.smoke) });
-    if (flags.json) print(report, true);
-    else process.stdout.write(`${formatDoctor(report)}\n`);
-    return report.ok ? 0 : 1;
+    const tps = flags.tps ? await runDoctorTps({ allowStub: Boolean(flags["allow-stub"]) }) : undefined;
+    if (flags.json) print(tps ? { doctor: report, tps } : report, true);
+    else {
+      process.stdout.write(`${formatDoctor(report)}\n`);
+      if (tps) process.stdout.write(`${formatTps(tps)}\n`);
+    }
+    const tpsFail = Boolean(tps && tps.unmeasured && !flags["allow-stub"]);
+    return report.ok && !tpsFail ? 0 : 1;
   }
 
   if (command === "install") {
@@ -378,7 +391,7 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
 
   if (command === "inspect") {
     const topic = flags._[1] || "";
-    if (!topic) throw new CliError(`usage: oh-my-mcode inspect <${INSPECT_TOPICS.join("|")}> [--run id]`);
+    if (!topic) throw new CliError(`usage: oh-my-mcode inspect <${INSPECT_TOPICS.join("|")}|run://<id>/findings> [--run id]`);
     const result = runInspect({ topic, workspace, runId: flags["run-id"] || flags._[2] });
     if (flags.json) print(result, true);
     else process.stdout.write(`${formatInspect(result)}\n`);
