@@ -509,23 +509,47 @@ function checkCliPackage() {
   }
 }
 
+function installSection(readme) {
+  for (const marker of ["## Installation", "## Install"]) {
+    if (!readme.includes(marker)) continue;
+    return readme.split(marker)[1]?.split("\n## ")[0] || "";
+  }
+  return "";
+}
+
 function checkHonesty() {
   const readme = read("README.md");
-  if (!readme.includes("not a registered") && !readme.includes("no registered") && !readme.includes("not a registered `/max`")) {
+  if (
+    !readme.includes("not a registered") &&
+    !readme.includes("no registered") &&
+    !readme.includes("not a registered `/max`")
+  ) {
     err("README must say /max is not a registered host command");
   }
   if (!readme.includes('oh-my-mcode max "fix the failing auth tests and prove they pass"')) {
-    err("README must lead with oh-my-mcode max as the hero");
+    err("README must include the hero oh-my-mcode max command");
   }
   if (!readme.includes("coexist")) err("README must say we coexist with host /plan /goal");
-  if (!readme.includes("do not replace") && !readme.includes("We do not replace")) {
+  if (
+    !/do not replace|don't replace|We do not replace|we don't replace/i.test(readme)
+  ) {
     err("README must say we do not replace host Plan Mode");
   }
-  if (!readme.includes("MiniMax-AI/skills") || !/do \*\*not\*\* install|Do \*\*not\*\* install|not install this from/i.test(readme)) {
+  if (
+    !readme.includes("MiniMax-AI/skills") ||
+    !/do \*\*not\*\* install|Do \*\*not\*\* install|not install this from|Don't install this from/i.test(
+      readme,
+    )
+  ) {
     err("README must warn not to install via MiniMax-AI/skills");
   }
-  const installBlock = readme.split("## Install")[1]?.split("## ")[0] || "";
-  if (!installBlock.includes("npm install") || !installBlock.includes("npm link") || !installBlock.includes("oh-my-mcode doctor") || !installBlock.includes("oh-my-mcode install")) {
+  const installBlock = installSection(readme);
+  if (
+    !installBlock.includes("npm install") ||
+    !installBlock.includes("npm link") ||
+    !installBlock.includes("oh-my-mcode doctor") ||
+    !installBlock.includes("oh-my-mcode install")
+  ) {
     err("README install must be clone → npm install → npm link → oh-my-mcode doctor → oh-my-mcode install");
   }
   if (/\bmmx\b/.test(installBlock) || /\bmavis\b/.test(installBlock)) {
