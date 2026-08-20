@@ -1,5 +1,39 @@
 import type { TaskGraph, TaskItem } from "./types.js";
 
+export interface TeamPacket {
+  context: string;
+  tasks: Array<{ id: string; title: string; allowed_files?: string[]; notes?: string }>;
+}
+
+/** One shared packet for a wave. Orchestrator is the only scheduler. No grandchildren. */
+export function buildTeamPacket(input: {
+  goal: string;
+  discovery?: string;
+  interview?: string;
+  tasks: TaskItem[];
+}): TeamPacket {
+  const discovery = (input.discovery || "").trim().slice(0, 400);
+  const context = [
+    `Goal: ${input.goal}`,
+    input.interview ? "Interview: interview.md" : "",
+    discovery ? `Discovery summary: ${discovery}` : "",
+    "Workers do not spawn. Orchestrator is the only scheduler.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return {
+    context,
+    tasks: input.tasks
+      .filter((task) => task.role === "builder")
+      .map((task) => ({
+        id: task.id,
+        title: task.title,
+        allowed_files: task.allowed_files,
+        notes: task.notes,
+      })),
+  };
+}
+
 export function readyBuilders(tasks: TaskGraph): TaskItem[] {
   const done = new Set(tasks.tasks.filter((task) => task.status === "done").map((task) => task.id));
   return tasks.tasks.filter(

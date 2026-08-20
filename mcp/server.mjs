@@ -1,39 +1,20 @@
 #!/usr/bin/env node
 /**
  * Dependency-free stdio JSON-RPC MCP server (hello-mcode-mcp shape).
- * Tools spawn the oh-my-mcode CLI / run-store so there is one implementation.
+ * Tools call the TypeScript harness (same run store as the CLI).
  * Workspace = OMM_WORKSPACE or cwd. Do not set PLUGIN_ROOT / PLUGIN_DATA.
  */
-import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const CLI = path.join(ROOT, "bin/oh-my-mcode.mjs");
-const STORE = path.join(ROOT, "scripts/run-store.mjs");
+const HARNESS = path.join(ROOT, "dist/harness.js");
+const INSPECT = path.join(ROOT, "dist/inspect.js");
 
 function workspaceOf() {
   return process.env.OMM_WORKSPACE || process.cwd();
-}
-
-function runNode(script, args, workspace) {
-  return spawnSync(process.execPath, [script, ...args], {
-    encoding: "utf8",
-    cwd: workspace,
-    env: { ...process.env, OMM_WORKSPACE: workspace },
-  });
-}
-
-function parseStdout(text) {
-  const trimmed = (text || "").trim();
-  if (!trimmed) return { raw: text || "" };
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return { text: trimmed };
-  }
 }
 
 function toolResult(payload) {
@@ -89,72 +70,109 @@ const TOOLS = [
     },
   },
   {
+    name: "omm_interview",
+    description: "Interview intake. Writes interview.md + interview.json and stops at PLAN_REVIEW. No builder.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["goal"],
+      properties: {
+        goal: { type: "string" },
+        constraints: { type: "array", items: { type: "string" } },
+        answers: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            goal: { type: "string" },
+            constraints: { type: "array", items: { type: "string" } },
+            acceptance: { type: "array", items: { type: "string" } },
+            out_of_scope: { type: "array", items: { type: "string" } },
+          },
+        },
+      },
+    },
+  },
+  {
     name: "omm_inspect",
-    description: "Inspect tools|skills|agents|context|runs|model-policy.",
+    description: "Inspect tools|skills|agents|context|runs|model-policy, or address run://<id>/findings.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
       required: ["topic"],
       properties: {
-        topic: { type: "string", enum: ["tools", "skills", "agents", "context", "runs", "model-policy"] },
+        topic: { type: "string", description: "tools|skills|agents|context|runs|model-policy or run://<id>/findings" },
+        address: { type: "string", description: "Alias for a run://<id>/leaf store path" },
         run_id: { type: "string" },
       },
     },
   },
 ];
 
-function callTool(name, args = {}) {
-  const workspace = workspaceOf();
-  if (name === "omm_run_create") {
-    const goal = typeof args.goal === "string" ? args.goal.trim() : "";
-    if (!goal) return toolError("omm_run_create requires goal");
-    const result = runNode(STORE, ["create", "--workspace", workspace, "--goal", goal], workspace);
-    if ((result.status ?? 1) !== 0) return toolError(result.stderr || result.stdout || "create failed");
-    return toolResult(parseStdout(result.stdout));
+async function loadHarness(workspace) {
+  if (!existsSync(HARNESS)) {
+    throw new Error("dist/harness.js missing; run npm install / npm run build in the plugin root");
   }
-  if (name === "omm_run_show") {
-    const cmd = ["show", "--workspace", workspace];
-    if (args.run_id) cmd.push("--run-id", String(args.run_id));
-    else cmd.push("--latest");
-    const result = runNode(STORE, cmd, workspace);
-    if ((result.status ?? 1) !== 0) return toolError(result.stderr || result.stdout || "show failed");
-    return toolResult(parseStdout(result.stdout));
-  }
-  if (name === "omm_run_list") {
-    const result = runNode(STORE, ["list", "--workspace", workspace], workspace);
-    if ((result.status ?? 1) !== 0) return toolError(result.stderr || result.stdout || "list failed");
-    return toolResult(parseStdout(result.stdout));
-  }
-  if (name === "omm_status") {
-    const cmd = ["status", "--json", "--workspace", workspace];
-    if (args.run_id) cmd.push(String(args.run_id));
-    const result = runNode(CLI, cmd, workspace);
-    if ((result.status ?? 1) !== 0) return toolError(result.stderr || result.stdout || "status failed");
-    return toolResult(parseStdout(result.stdout));
-  }
-  if (name === "omm_verify") {
-    const cmd = ["verify", "--json", "--no-llm-verify", "--workspace", workspace];
-    if (args.run_id) cmd.push(String(args.run_id));
-    const result = runNode(CLI, cmd, workspace);
-    if (!existsSync(CLI)) return toolError("oh-my-mcode CLI missing");
-    if ((result.status ?? 1) !== 0 && (result.status ?? 1) !== 2) {
-      return toolError(result.stderr || result.stdout || "verify failed");
-    }
-    return toolResult(parseStdout(result.stdout));
-  }
-  if (name === "omm_inspect") {
-    const topic = typeof args.topic === "string" ? args.topic : "";
-    if (!topic) return toolError("omm_inspect requires topic");
-    const cmd = ["inspect", topic, "--json", "--workspace", workspace];
-    if (args.run_id) cmd.push("--run-id", String(args.run_id));
-    const result = runNode(CLI, cmd, workspace);
-    if ((result.status ?? 1) !== 0) return toolError(result.stderr || result.stdout || "inspect failed");
-    return toolResult(parseStdout(result.stdout));
-  }
-  return { error: { code: -32601, message: `Unknown tool: ${name}` } };
+  const mod = await import(pathToFileURL(HARNESS).href);
+  return new mod.Harness(workspace);
 }
 
-function handle(message) {
+async function callTool(name, args = {}) {
+  const workspace = workspaceOf();
+  try {
+    if (name === "omm_inspect") {
+      const topic = typeof args.address === "string" && args.address ? args.address : typeof args.topic === "string" ? args.topic : "";
+      if (!topic) return toolError("omm_inspect requires topic");
+      if (!existsSync(INSPECT)) return toolError("dist/inspect.js missing; run npm run build");
+      const inspect = await import(pathToFileURL(INSPECT).href);
+      const result = inspect.runInspect({ topic, workspace, runId: args.run_id ? String(args.run_id) : undefined });
+      return toolResult(result);
+    }
+    const harness = await loadHarness(workspace);
+    if (name === "omm_run_create") {
+      const goal = typeof args.goal === "string" ? args.goal.trim() : "";
+      if (!goal) return toolError("omm_run_create requires goal");
+      const result = await harness.submit({ op: "create", goal });
+      return toolResult(result.run);
+    }
+    if (name === "omm_run_show") {
+      const result = await harness.submit({ op: "show", runId: args.run_id ? String(args.run_id) : undefined });
+      return toolResult(result.run);
+    }
+    if (name === "omm_run_list") {
+      const result = await harness.submit({ op: "list" });
+      return toolResult(result.runs);
+    }
+    if (name === "omm_status") {
+      const result = await harness.submit({ op: "status", runId: args.run_id ? String(args.run_id) : undefined });
+      return toolResult(result.hud || result);
+    }
+    if (name === "omm_verify") {
+      const result = await harness.submit({
+        op: "verify",
+        runId: args.run_id ? String(args.run_id) : undefined,
+        llmVerify: false,
+      });
+      return toolResult(result.run);
+    }
+    if (name === "omm_interview") {
+      const goal = typeof args.goal === "string" ? args.goal.trim() : "";
+      if (!goal) return toolError("omm_interview requires goal");
+      const result = await harness.submit({
+        op: "interview",
+        goal,
+        answers: args.answers,
+        constraints: Array.isArray(args.constraints) ? args.constraints.map(String) : undefined,
+        interactive: false,
+      });
+      return toolResult({ run: result.run, interview: result.interview });
+    }
+    return { error: { code: -32601, message: `Unknown tool: ${name}` } };
+  } catch (error) {
+    return toolError(error instanceof Error ? error.message : String(error));
+  }
+}
+
+function handleInit(message) {
   if (message.method === "initialize") {
     return {
       result: {
@@ -167,12 +185,7 @@ function handle(message) {
   if (message.method === "tools/list") {
     return { result: { tools: TOOLS } };
   }
-  if (message.method === "tools/call") {
-    const name = message.params?.name;
-    const args = message.params?.arguments || {};
-    return callTool(name, args);
-  }
-  return { error: { code: -32601, message: `Method not found: ${String(message.method)}` } };
+  return null;
 }
 
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -184,7 +197,10 @@ async function drain() {
   busy = true;
   while (queue.length) {
     const message = queue.shift();
-    const response = handle(message);
+    const init = handleInit(message);
+    const response = init || (message.method === "tools/call"
+      ? await callTool(message.params?.name, message.params?.arguments || {})
+      : { error: { code: -32601, message: `Method not found: ${String(message.method)}` } });
     process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id: message.id, ...response })}\n`);
   }
   busy = false;

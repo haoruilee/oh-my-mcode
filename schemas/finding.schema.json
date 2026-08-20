@@ -79,6 +79,10 @@
             "items": {
               "type": "string"
             }
+          },
+          "sha256": {
+            "type": "string",
+            "description": "sha256 of linked artifact bytes (or finding text if none)"
           }
         }
       }

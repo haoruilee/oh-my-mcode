@@ -11,7 +11,7 @@ export function pluginInstallDir(): string {
   return path.join(minimaxHome(), "plugins", "oh-my-mcode");
 }
 
-export function installPlugin(): { dest: string } {
+export function installPlugin(opts: { yes?: boolean } = {}): { dest: string; packageRoot: string; yes: boolean } {
   const root = packageRoot();
   if (!existsSync(path.join(root, "plugin.json")) || !existsSync(path.join(root, ".minimax-plugin/plugin.json"))) {
     throw new CliError(`missing plugin manifests in ${root}`);
@@ -43,5 +43,6 @@ export function installPlugin(): { dest: string } {
   log("");
   log("Then in MiniMax Code (desktop or mcode TUI) say:");
   log("  max mode: <your task>");
-  return { dest };
+  if (opts.yes) log("(install --yes: non-interactive)");
+  return { dest, packageRoot: root, yes: Boolean(opts.yes) };
 }

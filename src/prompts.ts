@@ -1,60 +1,47 @@
-import { readFileSync, existsSync } from "node:fs";
-import path from "node:path";
-import { packageRoot } from "./util.js";
 import type { TaskContract } from "./types.js";
+import { yieldContractLine } from "./yield.js";
 
-function roleFile(name: string): string {
-  const filePath = path.join(packageRoot(), "agents", `${name}.md`);
-  if (!existsSync(filePath)) return "";
-  return readFileSync(filePath, "utf8").trim();
+export function estimateTokens(text: string): number {
+  return Math.max(1, Math.ceil(text.length / 4));
 }
 
-export function clipRole(name: string, max = 1800): string {
-  return clip(roleFile(name), max);
+export function measurePrompt(text: string): { chars: number; est_tokens: number } {
+  return { chars: text.length, est_tokens: estimateTokens(text) };
 }
 
-function clip(text: string, max = 1800): string {
-  if (text.length <= max) return text;
-  return `${text.slice(0, max)}\n…(truncated)`;
+export function tpsProbePrompt(): string {
+  return "reply with exactly pong and nothing else";
 }
 
-export function explorerPrompt(goal: string): string {
-  return `Role: Explorer (read-only).
-${clip(roleFile("explorer"))}
+function packetBlock(label: string, value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return `\n${label}: ${trimmed}\n`;
+}
 
+/** Contract-only. Point at paths. Host already has read. Do not paste file bodies. */
+export function explorerPrompt(goal: string, interview = ""): string {
+  return `Role: explorer (read-only).
 Goal: ${goal}
-
-Search the workspace. Do not edit files. Return:
-- relevant paths
-- existing test/build commands
-- top risks
-Keep it under 40 lines.`;
+${packetBlock("Interview path", interview ? "interview.md" : "")}
+Allowed: read/search. Do not edit product files. Do not spawn.
+Return paths, test/build commands, top risks.
+${yieldContractLine()}`;
 }
 
-export function plannerPrompt(goal: string, discovery: string): string {
-  return `Role: Planner (write plan artifacts only; do not edit product code).
-${clip(roleFile("planner"))}
-
+export function plannerPrompt(goal: string, discovery: string, interview = ""): string {
+  return `Role: planner (plan artifacts only; no product edits).
 Goal: ${goal}
-
-Discovery notes:
-${clip(discovery, 1200)}
-
-Write:
-1) A short markdown plan (context, DAG, risks, rollback)
-2) A JSON object in a fenced \`\`\`json block with shape:
-{"tasks":[{"id":"T1","title":"...","role":"builder","depends_on":[],"allowed_files":[]}],"acceptance":[{"id":"A1","criterion":"...","kind":"test","command":"..."}]}
-
-Acceptance must be runnable commands. One builder task per change. Do not implement.`;
+${packetBlock("Interview path", interview ? "interview.md" : "")}
+Discovery (summary only; host can read files):
+${discovery.trim() ? discovery.trim().slice(0, 400) : "(none)"}
+Write plan.md + tasks JSON with runnable acceptance. Do not implement. Do not spawn.
+${yieldContractLine()}`;
 }
 
-export function plannerTeamPrompt(goal: string, discovery: string): string {
-  return `${plannerPrompt(goal, discovery)}
-
-Team mode: emit a DAG with roles explorer/planner/builder/verifier/release.
-Independent builder tasks (no shared files, empty depends_on) MAY run in parallel.
-Do not nest sub-agents. The TypeScript orchestrator is the only scheduler.
-Builders never mark Accepted.`;
+export function plannerTeamPrompt(goal: string, discovery: string, interview = ""): string {
+  return `${plannerPrompt(goal, discovery, interview)}
+Team packet: emit independent builder tasks (empty depends_on) for the orchestrator to fan out. No nested workers.`;
 }
 
 export function reviewerPrompt(input: {
@@ -63,40 +50,29 @@ export function reviewerPrompt(input: {
   evidenceCount: number;
   currentStatus: string;
   diff: string;
-  roleContract: string;
 }): string {
-  return `Role: Reviewer (read-only overlay). You cannot Accept.
-${input.roleContract}
-
+  return `Role: reviewer (read-only). Cannot Accept.
 Goal: ${input.goal}
-Current status: ${input.currentStatus}
+Status: ${input.currentStatus}
 Evidence files: ${input.evidenceCount}
-
-Plan:
-${clip(input.plan, 800)}
-
-Diff stat:
-${clip(input.diff || "(none)", 400)}
-
-Write findings only. Reply with JSON:
-{"findings":[{"title":"...","detail":"...","severity":"note"}],"notes":["review cannot Accept"]}
-Do not edit files. Do not set Accepted.`;
+Plan path: plan.md
+Diff stat: ${input.diff ? input.diff.split("\n")[0] : "(none)"}
+${yieldContractLine()}
+Do not edit. Do not Accept.`;
 }
 
-export function builderPrompt(contract: TaskContract): string {
-  return `Role: Builder. One task only. No scope creep. Do not mark Accepted.
-${clip(roleFile("builder"))}
-
-# Task ${contract.task_id}
+export function builderPrompt(contract: TaskContract, context = ""): string {
+  return `Role: builder. One task. Do not mark Accepted. Do not spawn.
+Task: ${contract.task_id}
 Objective: ${contract.objective}
-${contract.allowed_files?.length ? `Allowed files: ${contract.allowed_files.join(", ")}` : ""}
+${contract.allowed_files?.length ? `Allowed files: ${contract.allowed_files.join(", ")}` : "Allowed files: (contract; host can read)"}
 Acceptance:
-${contract.acceptance.map((line) => `- ${line}`).join("\n")}
+${contract.acceptance.map((line) => `- ${line}`).join("\n") || "- (see tasks.json)"}
 Constraints:
 ${contract.constraints.map((line) => `- ${line}`).join("\n")}
-
-Implement this task. Run relevant tests if cheap. Summarize files changed.
-Do not spawn sub-agents. The orchestrator is the only scheduler.`;
+${packetBlock("Shared context", context)}
+Point at paths. Do not paste file bodies. Host already has read.
+${yieldContractLine()}`;
 }
 
 export function verifierPrompt(input: {
@@ -105,26 +81,18 @@ export function verifierPrompt(input: {
   acceptance: string[];
   commands: string[];
 }): string {
-  return `Role: Verifier. READ-ONLY. Do not edit, create, or delete files. Do not run formatters that write.
-${clip(roleFile("verifier"))}
-
+  return `Role: verifier. READ-ONLY. Do not edit. Do not Accept here — TypeScript writes findings.
 Goal: ${input.goal}
-
-Plan:
-${clip(input.plan, 800)}
-
-Deterministic results (already run by oh-my-mcode, not by you):
+Plan path: plan.md
+Deterministic results (already run):
 ${input.acceptance.map((line) => `- ${line}`).join("\n")}
 Commands: ${input.commands.join(" | ") || "(none)"}
-
-Judge leftovers only: missed acceptance, unsafe change, missing evidence.
-Reply with JSON: {"blockers":[{"title":"...","detail":"..."}],"notes":["..."]}
-If nothing leftover, {"blockers":[],"notes":["deterministic evidence is sufficient"]}.`;
+Judge leftovers only. Point at evidence paths.
+${yieldContractLine()}`;
 }
 
-export function repairPrompt(contract: TaskContract, findings: string): string {
-  return `${builderPrompt(contract)}
-
-Previous verifier findings to fix (and only these):
-${clip(findings, 1200)}`;
+export function repairPrompt(contract: TaskContract, findings: string, context = ""): string {
+  return `${builderPrompt(contract, context)}
+Repair only these findings (structured, not prose dump):
+${findings.slice(0, 800)}`;
 }

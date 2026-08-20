@@ -2,7 +2,9 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { McodeMissingError, packageRoot, which } from "./util.js";
-import type { Permission, Role } from "./types.js";
+import type { Permission, Role, UsageTotals } from "./types.js";
+import { extractUsage } from "./usage.js";
+import { extractStructuredOutput } from "./yield.js";
 
 export interface ExecRequest {
   cwd: string;
@@ -30,6 +32,10 @@ export interface ExecResult {
   events: StreamEvent[];
   exitCode: number;
   rawLines: string[];
+  usage?: UsageTotals;
+  structuredOutput?: { data?: unknown };
+  wall_ms?: number;
+  first_token_ms?: number;
 }
 
 export interface McodeClient {
@@ -154,6 +160,8 @@ export class ProcessMcode implements McodeClient {
 
     const rawLines: string[] = [];
     const events: StreamEvent[] = [];
+    const started = Date.now();
+    let first_token_ms: number | undefined;
 
     const exitCode = await new Promise<number>((resolve, reject) => {
       const child = spawn(command, args, {
@@ -172,6 +180,9 @@ export class ProcessMcode implements McodeClient {
           rawLines.push(line);
           const event = parseStreamLine(line);
           events.push(event);
+          if (first_token_ms == null && (event.type === "delta" || event.type === "assistant" || event.text)) {
+            first_token_ms = Date.now() - started;
+          }
           req.onEvent?.(event);
         }
       };
@@ -209,11 +220,18 @@ export class ProcessMcode implements McodeClient {
       });
     });
 
+    const wall_ms = Date.now() - started;
+    const usage = extractUsage(events, rawLines);
+    if (usage && usage.first_token_ms == null && first_token_ms != null) usage.first_token_ms = first_token_ms;
     return {
       text: collectAssistantText(events),
       events,
       exitCode,
       rawLines,
+      usage,
+      structuredOutput: extractStructuredOutput(events),
+      wall_ms,
+      first_token_ms: usage?.first_token_ms ?? first_token_ms,
     };
   }
 }

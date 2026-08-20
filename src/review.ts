@@ -3,9 +3,10 @@ import type { FindingItem, RunRecord } from "./types.js";
 import { nowIso } from "./util.js";
 import { RunStore } from "./store.js";
 import { ProcessMcode, type McodeClient } from "./mcode.js";
-import { applyRequestedSession, execTracked, judgeEvidenceFiles } from "./session.js";
+import { applyRequestedSession, judgeEvidenceFiles } from "./session.js";
 import { loadWorkflow } from "./workflows.js";
-import { clipRole, reviewerPrompt } from "./prompts.js";
+import { reviewerPrompt } from "./prompts.js";
+import { spawnSubagent } from "./subagent.js";
 
 export interface ReviewOptions {
   workspace: string;
@@ -49,11 +50,16 @@ export async function runReview(opts: ReviewOptions): Promise<{ run: RunRecord; 
   const client = opts.mcode || (process.env.OMM_MCODE ? new ProcessMcode() : undefined);
   if (client) {
     try {
-      const result = await execTracked(
-        client,
-        store,
-        runId,
+      const result = await spawnSubagent(
         {
+          role: "verifier",
+          contract: {
+            task_id: "review",
+            objective: `Read-only review of ${runId}`,
+            acceptance: ["Do not Accept"],
+            constraints: ["Read-only", "Do not spawn", "Do not Accept"],
+          },
+          permission: "ask",
           cwd: opts.workspace,
           prompt: reviewerPrompt({
             goal: run.goal,
@@ -61,28 +67,22 @@ export async function runReview(opts: ReviewOptions): Promise<{ run: RunRecord; 
             evidenceCount: evidence.items.length,
             currentStatus: run.status,
             diff,
-            roleContract: clipRole("verifier"),
           }),
-          role: "verifier",
-          permission: "ask",
           files: judgeEvidenceFiles(store, runId),
         },
-        opts,
+        { client, store, runId, sessionOpts: opts },
       );
-      store.writeTextEvidence(runId, "log", "review-llm.md", result.text || "(empty review)", {
+      store.writeTextEvidence(runId, "log", "review-llm.md", result.yield.summary || "(empty review yield)", {
         notes: "read-only review; cannot Accept",
       });
-      const fence = result.text.match(/```json\s*([\s\S]*?)```/i);
-      if (fence?.[1]) {
-        const parsed = JSON.parse(fence[1]) as { findings?: { title: string; detail: string; severity?: string }[] };
-        for (const [i, item] of (parsed.findings || []).entries()) {
-          extra.push({
-            id: `F${i + 1}`,
-            severity: (item.severity as FindingItem["severity"]) || "note",
-            title: item.title,
-            detail: item.detail,
-          });
-        }
+      for (const [i, item] of result.yield.findings.entries()) {
+        extra.push({
+          id: `F${i + 1}`,
+          severity: item.severity,
+          title: item.title,
+          detail: item.detail,
+          evidence: item.evidence,
+        });
       }
     } catch {
       extra.push({

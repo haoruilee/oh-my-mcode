@@ -162,6 +162,7 @@ test("cli --help lists hero commands", async () => {
     "team",
     "doctor",
     "install",
+    "interview",
   ]) {
     assert.match(help, new RegExp(cmd));
   }

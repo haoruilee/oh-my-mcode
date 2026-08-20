@@ -10,8 +10,8 @@
 
 | 表面 | 入口 | 谁驱动循环 |
 | --- | --- | --- |
-| TUI | 「max mode: …」/「make a verified plan」/「re-verify this run」 | Skill `max` / `plan` / `verify` / `resume` / `review` / `ship` / `research` / `team` |
-| CLI（拥有循环） | `oh-my-mcode max` / `omm` | TypeScript 编排器 |
+| TUI | 「max mode: …」/「make a verified plan」/「re-verify this run」 | Skill `max` / `plan` / `verify` / `resume` / `review` / `ship` / `research` / `team` / `interview` |
+| CLI（拥有循环） | `oh-my-mcode max` / `omm` | TypeScript harness + 编排器 |
 | 无界面 | `mcode exec` + 加载 max skill 的提示词 | 仍然是 `mcode`，不是 `mmx` / `mavis` 包装器 |
 
 状态不只活在 prompt 里：`<workspace>/.minimax/runs/<run_id>/`。

@@ -1,0 +1,7 @@
+{"_comment":"Captured mcode 0.2.1 MiniMax-M3 thinking stream-json (prose redacted). Local host measurement provided by the user — not a live CI run. Do not treat doctor --tps stub output as these numbers."}
+{"type":"message","timestamp":1000000000000,"message":{"role":"user"}}
+{"type":"delta","thinking":"[redacted]","timestamp":1000000004700,"chunkIndex":0}
+{"type":"delta","content":"[redacted]","timestamp":1000000008000,"chunkIndex":1}
+{"type":"delta","content":"[redacted]","timestamp":1000000010000,"chunkIndex":2,"finish":true}
+{"type":"message","message":{"role":"assistant","thinkingDurationMs":1061,"finishReason":"stop","usage":{"totalTokens":20348,"inputTokens":16816,"outputTokens":261,"requestDurationMs":7598,"cacheReadTokens":3271}}}
+{"schemaVersion":1,"type":"exec.result","sessionId":"mvs_redacted","status":"succeeded","durationMs":10911,"model":{"providerId":"minimax","modelId":"MiniMax-M3","variant":"thinking"}}

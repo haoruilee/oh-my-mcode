@@ -6,6 +6,7 @@ import type { RunStore } from "./store.js";
 import type { ExecResult, McodeClient } from "./mcode.js";
 import { nowIso } from "./util.js";
 import { verifierPrompt } from "./prompts.js";
+import { staleFileHashes } from "./hash.js";
 
 export interface DetectedCommands {
   test?: string;
@@ -166,6 +167,18 @@ export async function runDeterministicVerify(
         evidence: [`evidence/${rel}`],
       });
     }
+  }
+
+  const staleEvidence = store.staleEvidence(runId);
+  const staleWorkspace = staleFileHashes(workspace, store.loadFileHashes(runId));
+  for (const stale of [...staleEvidence, ...staleWorkspace]) {
+    findings.push({
+      id: `F${findings.length + 1}`,
+      severity: "blocker",
+      title: `Stale content hash: ${stale.path}`,
+      detail: `recorded ${stale.expected} live ${stale.actual || "missing"} — do not Accept; re-run tests`,
+      evidence: [stale.path],
+    });
   }
 
   return { acceptance, findings, commands };

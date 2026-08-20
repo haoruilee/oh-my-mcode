@@ -1,0 +1,14 @@
+# Documentation only. Not a host slash command.
+id: interview
+kind: skill-and-cli-workflow
+entry:
+  tui: "interview this goal"
+  not_a_slash_command: true
+phases:
+  - INTAKE
+  - PLAN_REVIEW
+rules:
+  no_product_edits: true
+  no_builder: true
+  stop_after: PLAN_REVIEW
+store: <workspace>/.minimax/runs/<run_id>/

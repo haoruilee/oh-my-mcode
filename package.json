@@ -11,7 +11,9 @@
   "exports": {
     ".": "./dist/cli.js",
     "./store": "./dist/store.js",
-    "./orchestrator": "./dist/orchestrator.js"
+    "./orchestrator": "./dist/orchestrator.js",
+    "./harness": "./dist/harness.js",
+    "./subagent": "./dist/subagent.js"
   },
   "files": [
     "bin",
@@ -40,6 +42,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepare": "tsc -p tsconfig.json",
+    "prepack": "tsc -p tsconfig.json",
     "test": "tsc -p tsconfig.json && node --test test/*.test.mjs",
     "eval": "tsc -p tsconfig.json && node evals/runner.mjs",
     "doctor": "node scripts/doctor.mjs",

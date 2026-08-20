@@ -279,7 +279,7 @@ function checkRolesAndWorkflows() {
     const rel = `agents/${role}.md`;
     if (!existsSync(path.join(ROOT, rel))) err(`missing role contract: ${rel}`);
   }
-  for (const name of ["max.yaml", "plan.yaml", "verify.yaml", "review.yaml", "ship.yaml", "research.yaml", "team.yaml"]) {
+  for (const name of ["max.yaml", "plan.yaml", "verify.yaml", "review.yaml", "ship.yaml", "research.yaml", "team.yaml", "interview.yaml"]) {
     const rel = `workflows/${name}`;
     if (!existsSync(path.join(ROOT, rel))) err(`missing workflow: ${rel}`);
   }
@@ -292,6 +292,7 @@ function checkRolesAndWorkflows() {
     "docs/host-reality.zh-CN.md",
     "docs/architecture.zh-CN.md",
     "docs/roadmap.md",
+    "docs/harness.md",
   ];
   for (const rel of requiredDocs) {
     if (!existsSync(path.join(ROOT, rel))) err(`missing ${rel}`);
@@ -305,6 +306,7 @@ function loadSchemas() {
     "finding.schema.json",
     "evidence.schema.json",
     "planner-output.schema.json",
+    "worker-yield.schema.json",
   ];
   const schemas = {};
   for (const name of names) {
@@ -478,6 +480,12 @@ function checkCliPackage() {
     "worktree.ts",
     "tool-repair.ts",
     "session.ts",
+    "harness.ts",
+    "subagent.ts",
+    "interview.ts",
+    "yield.ts",
+    "tps.ts",
+    "hash.ts",
   ]) {
     if (!existsSync(path.join(ROOT, "src", name))) err(`missing src/${name}`);
   }
@@ -500,10 +508,14 @@ function checkCliPackage() {
       "team",
       "doctor",
       "install",
+      "interview",
     ]) {
       if (!help.includes(cmd)) err(`CLI --help missing ${cmd}`);
     }
-    note("CLI --help lists max plan verify resume review ship research attach status cancel inspect team doctor install");
+    if (!help.includes("--tps") || !help.includes("--allow-stub") || !help.includes("--smoke")) {
+      err("CLI --help must list doctor --smoke, --tps, and --allow-stub");
+    }
+    note("CLI --help lists max plan verify resume review ship research attach status cancel inspect team interview doctor install");
   } catch (error) {
     err(`CLI --help failed: ${error.message}`);
   }
@@ -544,13 +556,36 @@ function checkHonesty() {
     err("README must warn not to install via MiniMax-AI/skills");
   }
   const installBlock = installSection(readme);
+  if (!installBlock.includes("npx oh-my-mcode install")) {
+    err("README install TL;DR must lead with npx oh-my-mcode install");
+  }
   if (
+    !installBlock.includes("git clone") ||
     !installBlock.includes("npm install") ||
-    !installBlock.includes("npm link") ||
-    !installBlock.includes("oh-my-mcode doctor") ||
-    !installBlock.includes("oh-my-mcode install")
+    !installBlock.includes("npm link")
   ) {
-    err("README install must be clone → npm install → npm link → oh-my-mcode doctor → oh-my-mcode install");
+    err("README install must keep clone → npm install → npm link as the power-user path");
+  }
+  if (!installBlock.includes("oh-my-mcode doctor") || !installBlock.includes("oh-my-mcode install")) {
+    err("README install must still mention oh-my-mcode doctor and oh-my-mcode install");
+  }
+  if (!readme.includes("npx github:haoruilee/oh-my-mcode")) {
+    err("README must document npx github:haoruilee/oh-my-mcode as the interim one-liner");
+  }
+  if (!readme.includes("oh-my-mcode interview") || !readme.includes("--smoke")) {
+    err("README must document interview and doctor --smoke");
+  }
+  if (!readme.includes("doctor --tps") && !readme.includes("--tps")) {
+    err("README must document doctor --tps");
+  }
+  if (!readme.includes("unmeasured")) {
+    err("README must say --tps prints unmeasured when the host is missing or stubbed");
+  }
+  if (/output_tps:\s*[0-9]/.test(readme) || /wall_tps:\s*[0-9]/.test(readme)) {
+    err("README must not invent live TPS numbers");
+  }
+  if (!readme.includes("docs/harness.md")) {
+    err("README footer must link docs/harness.md");
   }
   if (/\bmmx\b/.test(installBlock) || /\bmavis\b/.test(installBlock)) {
     err("README install steps must not mention mmx or mavis");
