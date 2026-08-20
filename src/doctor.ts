@@ -69,14 +69,26 @@ export function runDoctor(opts: { packageOnly?: boolean } = {}): DoctorReport {
 
   const skills = official?.skills || [];
   const missingSkills = skills.filter((rel) => !existsSync(path.join(root, rel)));
+  const expected = [
+    "skills/max/SKILL.md",
+    "skills/plan/SKILL.md",
+    "skills/verify/SKILL.md",
+    "skills/resume/SKILL.md",
+    "skills/doctor/SKILL.md",
+    "skills/review/SKILL.md",
+    "skills/ship/SKILL.md",
+    "skills/research/SKILL.md",
+    "skills/team/SKILL.md",
+  ];
+  const missingExpected = expected.filter((rel) => !skills.includes(rel) || !existsSync(path.join(root, rel)));
   add({
     id: "skills",
-    ok: missingSkills.length === 0 && skills.length === 5,
+    ok: missingSkills.length === 0 && missingExpected.length === 0 && skills.length === expected.length,
     level: "error",
     message:
-      missingSkills.length === 0
+      missingSkills.length === 0 && missingExpected.length === 0
         ? `skills present: ${skills.join(", ")}`
-        : `missing skills: ${missingSkills.join(", ")}`,
+        : `configured but invisible: missing ${[...missingSkills, ...missingExpected].join(", ")}`,
   });
 
   for (const rel of skills) {
@@ -93,11 +105,30 @@ export function runDoctor(opts: { packageOnly?: boolean } = {}): DoctorReport {
 
   add({
     id: "src",
-    ok: ["cli.ts", "orchestrator.ts", "mcode.ts", "verify.ts", "store.ts", "doctor.ts"].every((name) =>
-      existsSync(path.join(root, "src", name)),
-    ),
+    ok: [
+      "cli.ts",
+      "orchestrator.ts",
+      "mcode.ts",
+      "verify.ts",
+      "store.ts",
+      "doctor.ts",
+      "hud.ts",
+      "team.ts",
+      "inspect.ts",
+      "config.ts",
+      "worktree.ts",
+      "tool-repair.ts",
+    ].every((name) => existsSync(path.join(root, "src", name))),
     level: "error",
     message: "TypeScript orchestrator sources present",
+  });
+
+  const bin = path.join(root, "bin/oh-my-mcode.mjs");
+  add({
+    id: "cli-bins",
+    ok: existsSync(bin),
+    level: "error",
+    message: existsSync(bin) ? "CLI bins resolve (oh-my-mcode / omm → bin/oh-my-mcode.mjs)" : "missing bin/oh-my-mcode.mjs",
   });
 
   try {

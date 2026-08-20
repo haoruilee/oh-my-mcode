@@ -1,0 +1,14 @@
+# Consumed by src/workflows.ts. Not a host slash command.
+id: ship
+kind: skill-and-cli-workflow
+entry:
+  tui: "ship this run"
+  not_a_slash_command: true
+phases:
+  - RELEASE
+rules:
+  requires_status: accepted
+  role: release
+  default: notes_and_commands
+  git_push: only_if_commit_flag_and_clean
+store: <workspace>/.minimax/runs/<run_id>/

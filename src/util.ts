@@ -9,6 +9,7 @@ export function nowIso(): string {
 }
 
 export function packageRoot(): string {
+  if (process.env.OMM_PACKAGE_ROOT) return path.resolve(process.env.OMM_PACKAGE_ROOT);
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 }
 

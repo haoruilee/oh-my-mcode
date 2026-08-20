@@ -2,14 +2,20 @@ import { createHash } from "node:crypto";
 import type { Findings, Phase, RunRecord, TaskContract, TaskGraph, TaskItem } from "./types.js";
 import { log, McodeMissingError, nowIso, promptYesNo } from "./util.js";
 import { RunStore } from "./store.js";
-import { ProcessMcode, resolveMcodeInvocation, type ExecResult, type McodeClient } from "./mcode.js";
+import { ProcessMcode, resolveMcodeInvocation, type ExecRequest, type ExecResult, type McodeClient } from "./mcode.js";
 import {
+  detectProjectCommands,
   findingsFromDeterministic,
   judgePrompt,
   optionalLlmJudge,
+  runCaptured,
   runDeterministicVerify,
 } from "./verify.js";
-import { builderPrompt, explorerPrompt, plannerPrompt, repairPrompt } from "./prompts.js";
+import { builderPrompt, explorerPrompt, plannerPrompt, plannerTeamPrompt, repairPrompt } from "./prompts.js";
+import { execWithRepair } from "./tool-repair.js";
+import { drainBuilderWaves } from "./team.js";
+import { cleanupRunWorktrees, createWorktree, mergeWorktree } from "./worktree.js";
+import { loadWorkflow } from "./workflows.js";
 
 export interface OrchestratorOptions {
   workspace: string;
@@ -20,6 +26,11 @@ export interface OrchestratorOptions {
   maxRepairs?: number;
   llmVerify?: boolean;
   release?: boolean;
+  team?: boolean;
+  worktree?: boolean;
+  ralph?: boolean;
+  concurrency?: number;
+  workflow?: string;
   mcode?: McodeClient;
   onLog?: (line: string) => void;
 }
@@ -144,12 +155,21 @@ async function persistExec(store: RunStore, runId: string, phase: string, result
   });
 }
 
+async function execRole(
+  client: McodeClient,
+  store: RunStore,
+  runId: string,
+  req: ExecRequest,
+): Promise<ExecResult> {
+  return execWithRepair(client, req, { store, runId });
+}
+
 function discoveryText(store: RunStore, runId: string): string {
   const ev = store.loadEvidence(runId).items.find((item) => item.path.includes("discover"));
   return ev ? store.readArtifact(runId, ev.path) : "";
 }
 
-async function requireClient(opts: OrchestratorOptions, store: RunStore, runId: string): Promise<McodeClient> {
+export async function requireClient(opts: OrchestratorOptions, store: RunStore, runId: string): Promise<McodeClient> {
   if (opts.mcode) return opts.mcode;
   try {
     resolveMcodeInvocation();
@@ -162,20 +182,35 @@ async function requireClient(opts: OrchestratorOptions, store: RunStore, runId: 
   }
 }
 
+function rememberOptions(store: RunStore, runId: string, opts: OrchestratorOptions): void {
+  store.patchRun(runId, {
+    max_repairs: opts.maxRepairs ?? 3,
+    ralph: Boolean(opts.ralph),
+    team: Boolean(opts.team),
+    workflow: opts.workflow || (opts.team ? "team" : "max"),
+  });
+}
+
 export async function runMax(opts: OrchestratorOptions): Promise<RunRecord> {
   const store = new RunStore(opts.workspace);
   const run = opts.runId ? store.load(opts.runId) : store.create(opts.goal || "");
+  rememberOptions(store, run.run_id, { ...opts, workflow: opts.workflow || (opts.team ? "team" : "max") });
   emit(opts, `run ${run.run_id} at ${store.dir(run.run_id)}`);
   const client = await requireClient(opts, store, run.run_id);
   return drive(store, client, run.run_id, opts, { stopAfter: "ACCEPT" });
 }
 
+export async function runTeam(opts: OrchestratorOptions): Promise<RunRecord> {
+  return runMax({ ...opts, team: true, workflow: "team" });
+}
+
 export async function runPlan(opts: OrchestratorOptions): Promise<RunRecord> {
   const store = new RunStore(opts.workspace);
   const run = opts.runId ? store.load(opts.runId) : store.create(opts.goal || "");
+  rememberOptions(store, run.run_id, { ...opts, workflow: opts.workflow || "plan" });
   emit(opts, `run ${run.run_id} at ${store.dir(run.run_id)}`);
   const client = await requireClient(opts, store, run.run_id);
-  return drive(store, client, run.run_id, opts, { stopAfter: "PLAN_REVIEW" });
+  return drive(store, client, run.run_id, { ...opts, workflow: opts.workflow || "plan" }, { stopAfter: "PLAN_REVIEW" });
 }
 
 export async function runVerifyOnly(opts: OrchestratorOptions): Promise<RunRecord> {
@@ -197,9 +232,63 @@ export async function runResume(opts: OrchestratorOptions): Promise<RunRecord> {
     store.evidenceReport(runId);
     return store.load(runId);
   }
+  if (run.status === "cancelled") {
+    emit(opts, `run ${runId} is cancelled`);
+    return run;
+  }
   const client = await requireClient(opts, store, runId);
-  const stopAfter = run.phase === "PLAN" || run.phase === "PLAN_REVIEW" ? "PLAN_REVIEW" : "ACCEPT";
+  const plannedOnly = run.phase === "PLAN" || run.phase === "PLAN_REVIEW";
+  const stopAfter = plannedOnly && !opts.ralph ? "PLAN_REVIEW" : "ACCEPT";
   return drive(store, client, runId, opts, { stopAfter, resumeFrom: run.phase });
+}
+
+async function verifyWorktreeSlice(workspace: string): Promise<boolean> {
+  const detected = detectProjectCommands(workspace);
+  const command = detected.test || detected.build;
+  if (!command) return true;
+  const result = await runCaptured(command, workspace);
+  return result.exitCode === 0;
+}
+
+async function executeOneBuilder(
+  store: RunStore,
+  client: McodeClient,
+  runId: string,
+  opts: OrchestratorOptions,
+  task: TaskItem,
+  permission: NonNullable<OrchestratorOptions["permission"]>,
+): Promise<void> {
+  let tasks = markTask(store.loadTasks(runId), task.id, "in_progress");
+  store.writeTasks(runId, tasks);
+  store.appendEvent(runId, "task_started", { title: task.title }, { task_id: task.id });
+  const prior = store.loadFindings(runId);
+  const prompt =
+    prior && prior.verdict === "rejected"
+      ? repairPrompt(contractFor(task, tasks), JSON.stringify(prior.findings, null, 2))
+      : builderPrompt(contractFor(task, tasks));
+  let cwd = opts.workspace;
+  let worktree: ReturnType<typeof createWorktree> | undefined;
+  if (opts.worktree) {
+    worktree = createWorktree(opts.workspace, runId, task.id);
+    if (worktree.created) {
+      cwd = worktree.path;
+      store.appendEvent(runId, "worktree_created", { path: worktree.path, branch: worktree.branch }, { task_id: task.id });
+    }
+  }
+  const result = await execRole(client, store, runId, {
+    cwd,
+    prompt,
+    role: "builder",
+    permission,
+  });
+  await persistExec(store, runId, `execute-${task.id}`, result);
+  if (worktree?.created) {
+    const sliceOk = await verifyWorktreeSlice(worktree.path);
+    if (sliceOk) mergeWorktree(opts.workspace, runId, task.id);
+    else emit(opts, `worktree verify slice failed for ${task.id}; not merging`);
+  }
+  store.writeTasks(runId, markTask(store.loadTasks(runId), task.id, "done"));
+  store.appendEvent(runId, "task_completed", { title: task.title }, { task_id: task.id });
 }
 
 async function drive(
@@ -209,14 +298,17 @@ async function drive(
   opts: OrchestratorOptions,
   ctrl: { stopAfter: Phase; resumeFrom?: Phase },
 ): Promise<RunRecord> {
+  const workflow = loadWorkflow(opts.workflow || (opts.team ? "team" : "max"));
   const permission = opts.permission || "smart";
   const maxRepairs = opts.maxRepairs ?? 3;
+  const concurrency = opts.concurrency ?? 2;
   let run = store.load(runId);
+  if (run.status === "cancelled") return run;
 
-  if (shouldRun(run.phase, "DISCOVER", ctrl.resumeFrom)) {
+  if (shouldRun(run.phase, "DISCOVER", ctrl.resumeFrom) && workflow.phases.includes("DISCOVER")) {
     store.setPhase(runId, "DISCOVER");
     emit(opts, "phase DISCOVER");
-    const result = await client.exec({
+    const result = await execRole(client, store, runId, {
       cwd: opts.workspace,
       prompt: explorerPrompt(run.goal),
       role: "explorer",
@@ -233,9 +325,9 @@ async function drive(
     store.setPhase(runId, "PLAN");
     emit(opts, "phase PLAN");
     const discoverBody = discoveryText(store, runId);
-    const result = await client.exec({
+    const result = await execRole(client, store, runId, {
       cwd: opts.workspace,
-      prompt: plannerPrompt(run.goal, discoverBody),
+      prompt: opts.team ? plannerTeamPrompt(run.goal, discoverBody) : plannerPrompt(run.goal, discoverBody),
       role: "planner",
       permission: "ask",
     });
@@ -261,30 +353,26 @@ async function drive(
 
   while (true) {
     run = store.load(runId);
-    if (run.phase === "ACCEPT") break;
+    if (run.phase === "ACCEPT" || run.status === "cancelled") break;
 
     store.setPhase(runId, "EXECUTE", "active");
     emit(opts, "phase EXECUTE");
-    let tasks = store.loadTasks(runId);
-    const task = nextBuilder(tasks);
-    if (task) {
-      tasks = markTask(tasks, task.id, "in_progress");
-      store.writeTasks(runId, tasks);
-      store.appendEvent(runId, "task_started", { title: task.title }, { task_id: task.id });
-      const prior = store.loadFindings(runId);
-      const prompt =
-        prior && prior.verdict === "rejected"
-          ? repairPrompt(contractFor(task, tasks), JSON.stringify(prior.findings, null, 2))
-          : builderPrompt(contractFor(task, tasks));
-      const result = await client.exec({
-        cwd: opts.workspace,
-        prompt,
-        role: "builder",
-        permission,
-      });
-      await persistExec(store, runId, `execute-${task.id}`, result);
-      store.writeTasks(runId, markTask(store.loadTasks(runId), task.id, "done"));
-      store.appendEvent(runId, "task_completed", { title: task.title }, { task_id: task.id });
+    if (opts.team) {
+      await drainBuilderWaves(
+        () => store.loadTasks(runId),
+        async (task) => executeOneBuilder(store, client, runId, opts, task, permission),
+        concurrency,
+        (wave) => {
+          store.appendEvent(runId, "team_spawned", {
+            count: wave.length,
+            task_ids: wave.map((item) => item.id),
+            grandchildren: false,
+          });
+        },
+      );
+    } else {
+      const task = nextBuilder(store.loadTasks(runId));
+      if (task) await executeOneBuilder(store, client, runId, opts, task, permission);
     }
 
     const verdict = await verifyPhase(store, runId, opts, client);
@@ -320,6 +408,9 @@ async function drive(
     store.appendEvent(runId, "repair_requested", { task_id: nextId, signature: sig });
   }
 
+  if (store.load(runId).status === "cancelled") {
+    cleanupRunWorktrees(opts.workspace, runId);
+  }
   if (opts.release && store.load(runId).status === "accepted") {
     store.setPhase(runId, "RELEASE");
     emit(opts, "phase RELEASE — commit/PR yourself after Accepted; this is not a second VCS CLI");

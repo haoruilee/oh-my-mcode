@@ -97,6 +97,7 @@ export function collectAssistantText(events: StreamEvent[]): string {
     .trim();
 }
 
+/** Spawn/parse failures are classified and retried once in `tool-repair.ts` (execWithRepair). */
 export class ProcessMcode implements McodeClient {
   async exec(req: ExecRequest): Promise<ExecResult> {
     const { command, prefixArgs } = resolveMcodeInvocation();

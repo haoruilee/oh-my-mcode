@@ -1,0 +1,29 @@
+# Consumed by src/workflows.ts. Not a host slash command.
+# Host /team remains MiniMax Agent Team. We coexist.
+id: team
+kind: skill-and-cli-workflow
+entry:
+  cli: "oh-my-mcode team <task>"
+  tui: "flat team mode: <task>"
+  not_a_slash_command: true
+  coexist_with: ["/team"]
+phases:
+  - INTAKE
+  - DISCOVER
+  - PLAN
+  - PLAN_REVIEW
+  - EXECUTE
+  - VERIFY
+  - REPAIR
+  - ACCEPT
+  - RELEASE
+rules:
+  sequential_max_is_default: true
+  team_is_explicit: true
+  parallel_independent_builders: true
+  default_concurrency: 2
+  optional_worktree: true
+  no_grandchild_agents: true
+  only_verify_sets_accepted: true
+  orchestrator_is_only_scheduler: true
+store: <workspace>/.minimax/runs/<run_id>/

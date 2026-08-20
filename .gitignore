@@ -7,6 +7,7 @@ Thumbs.db
 node_modules/
 dist/
 .minimax/runs/
+evals/output/
 .idea/
 .vscode/
 *.pid

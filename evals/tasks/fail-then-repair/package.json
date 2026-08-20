@@ -1,0 +1,7 @@
+{
+  "name": "omm-eval-fail-then-repair",
+  "private": true,
+  "scripts": {
+    "test": "node -e \"process.exit(require('node:fs').existsSync('.repaired') ? 0 : 1)\""
+  }
+}

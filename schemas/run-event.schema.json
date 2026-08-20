@@ -30,7 +30,15 @@
         "repair_requested",
         "run_accepted",
         "run_rejected",
-        "run_resumed"
+        "run_resumed",
+        "review_completed",
+        "ship_prepared",
+        "research_completed",
+        "task_cancelled",
+        "team_spawned",
+        "worktree_created",
+        "hud_attached",
+        "run_cancelled"
       ]
     },
     "run_id": {

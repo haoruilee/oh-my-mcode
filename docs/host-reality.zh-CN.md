@@ -35,7 +35,7 @@ MiniMax 生态里有三个不同的 CLI。用户安装步骤里不要混写：
 - 可以：Skills、MCP（stdio / streamable-http / sse）
 - 不可以：hooks、自定义 Agents、Commands / 斜杠命令、LSP、Apps/UI、通用 OAuth、TUI 扩展
 
-主入口是名为 `max` 的 **Skill**（自然语言）。本仓库不发布第二条用户命令行（`omm`、`mavis max`、`mmx` 包装器）。
+主入口是 `oh-my-mcode max` / 别名 `omm`，加上名为 `max` 的 **Skill**（自然语言）。这不是 `mavis max`，也不是 `mmx` 包装器。宿主命令仍是 `mcode`。
 
 ## 本地市场（0.1.6 实测）
 
@@ -57,7 +57,7 @@ MiniMax 生态里有三个不同的 CLI。用户安装步骤里不要混写：
 
 `mcode exec` 已有 `--session`、`--continue`、`--output-format`、`--output-schema`、`--permission`。以后可以用 `mcode exec` + 加载 max skill 的提示词做无界面驱动。这不是第二条产品 CLI。
 
-v0 不做 Agent Team / 递归派生。桌面 `/team` 仍是宿主的。
+扁平 `oh-my-mcode team` 是 TypeScript 调度器（不派生孙 agent）。它**不是**宿主 Agent Team，也不是递归派生。桌面 `/team` 仍是宿主的。App 面板、已注册的 `/max`、hooks 要等公开 Extension API。
 
 ## 能检查什么
 

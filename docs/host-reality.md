@@ -45,7 +45,7 @@ Not public plugin capabilities:
 - Generic OAuth
 - TUI extensions
 
-Hero entry is the `max` **Skill**, via natural language. This repo does not ship a second user-facing CLI (`omm`, `mavis max`, `mmx` wrappers).
+Hero entry is `oh-my-mcode max` / alias `omm`, plus the `max` **Skill** via natural language. This is not `mavis max` or an `mmx` wrapper. The host binary remains `mcode`.
 
 ## Local marketplace (empirically on 0.1.6)
 
@@ -78,7 +78,7 @@ mcode exec --cwd . --output-format stream-json --permission smart \
   "Follow the oh-my-mcode max skill: fix the failing auth tests and prove they pass"
 ```
 
-v0 does not implement Agent Team, recursive spawn, or cancel APIs. Those land when the host exposes them. Desktop `/team` remains the host's.
+Flat `oh-my-mcode team` is a TypeScript scheduler (no grandchild agents). It does **not** implement host Agent Team or recursive spawn. Desktop `/team` remains the host's. App panels, registered `/max`, and hooks wait on a public Extension API.
 
 ## Honest inspect surface
 

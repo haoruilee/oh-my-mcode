@@ -32,7 +32,7 @@ Honest install and package checks. No telemetry. No network.
    - `mcode plugin list -m local`
    - `mcode plugin list -m local --json`
 3. Check the drop-in path `~/.minimax/plugins/oh-my-mcode`. If the folder is missing, point at `scripts/install.sh` or `scripts/install.ps1`. Do not send the user to MiniMax-AI/skills.
-4. Confirm both manifests exist and list the five skill paths.
+4. Confirm both manifests exist and list every packaged skill path (max, plan, verify, resume, doctor, review, ship, research, team). Missing listed skills are an error, not a silent drop.
 5. Confirm `<workspace>/.minimax/runs/` is creatable by `run-store.mjs create` if the user wants a write probe.
 
 ## Output contract

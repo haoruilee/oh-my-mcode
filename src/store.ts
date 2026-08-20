@@ -253,6 +253,57 @@ export class RunStore {
     });
   }
 
+  writeArtifact(runId: string, relativePath: string, contents: string): string {
+    return this.withLock(runId, () => {
+      const dest = path.join(this.dir(runId), relativePath);
+      writeAtomic(dest, contents.endsWith("\n") ? contents : `${contents}\n`);
+      this.touch(runId, {});
+      return dest;
+    });
+  }
+
+  cancel(runId: string, reason = "user cancelled"): RunRecord {
+    return this.withLock(runId, () => {
+      const current = this.load(runId);
+      if (current.status === "accepted") {
+        throw new CliError("accepted runs cannot be cancelled; use ship to release");
+      }
+      const next = this.touch(runId, { status: "cancelled" });
+      const tasksPath = path.join(this.dir(runId), "tasks.json");
+      if (existsSync(tasksPath)) {
+        const tasks = this.loadTasks(runId);
+        let changed = false;
+        for (const task of tasks.tasks) {
+          if (task.status === "pending" || task.status === "in_progress") {
+            task.status = "cancelled";
+            changed = true;
+            this.appendEventUnlocked(this.dir(runId), {
+              id: newEventId(),
+              ts: next.updated_at,
+              type: "task_cancelled",
+              run_id: runId,
+              phase: next.phase,
+              task_id: task.id,
+              payload: { title: task.title, reason },
+            });
+          }
+        }
+        if (changed) {
+          writeJson(tasksPath, { ...tasks, updated_at: nowIso() });
+        }
+      }
+      this.appendEventUnlocked(this.dir(runId), {
+        id: newEventId(),
+        ts: next.updated_at,
+        type: "run_cancelled",
+        run_id: runId,
+        phase: next.phase,
+        payload: { reason, from_status: current.status },
+      });
+      return next;
+    });
+  }
+
   writeTasks(runId: string, tasks: TaskGraph): TaskGraph {
     return this.withLock(runId, () => {
       const next: TaskGraph = { ...tasks, run_id: runId, updated_at: nowIso() };
@@ -426,6 +477,22 @@ export class RunStore {
       else for (const finding of findings.findings) lines.push(`- ${finding.id} (${finding.severity}): ${finding.title}`);
     } else {
       lines.push(`_Verifier has not written findings.json._`);
+    }
+    const repeated = events.find((event) => event.type === "repair_requested" && event.payload?.stop === "repeated_failure");
+    const maxed = events.find((event) => event.type === "repair_requested" && event.payload?.stop === "max_repairs");
+    if (repeated || maxed || run.last_failure_signature) {
+      lines.push(``, `## Escalation`, ``);
+      if (repeated) {
+        lines.push(
+          `- Repeated failure signature \`${String(repeated.payload.signature || run.last_failure_signature || "")}\`. Repair loop stopped. Human intervention required.`,
+        );
+      }
+      if (maxed) {
+        lines.push(`- Repair limit reached (${String(maxed.payload.repairs || run.repair_count || "")}).`);
+      }
+      if (run.ralph) {
+        lines.push(`- Ralph mode was on; the run did not reach Accepted within the repair bound.`);
+      }
     }
     lines.push(``, `## Evidence files`, ``);
     if (evidence.items.length === 0) lines.push(`- none`);
