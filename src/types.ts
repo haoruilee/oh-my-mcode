@@ -35,6 +35,7 @@ export const EVENT_TYPES = [
   "worktree_created",
   "hud_attached",
   "run_cancelled",
+  "host_session_bound",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -66,6 +67,9 @@ export interface RunRecord {
   ralph?: boolean;
   team?: boolean;
   workflow?: string;
+  host_session_id?: string;
+  host_continue?: boolean;
+  host_session_source?: "host" | "synthesized" | "user";
 }
 
 export interface RunEvent {

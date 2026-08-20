@@ -22,6 +22,7 @@ Only this skill may set run status to `accepted` or `rejected`. Load `agents/ver
 - Existing `run_id` (user-supplied, `OMM_RUN_ID`, or `--latest`).
 - `tasks.json` `acceptance[]` and `plan.md`.
 - State tool: `node <plugin-root>/scripts/run-store.mjs`. Run tests yourself; do not edit product code.
+- **MCP first:** if `omm_verify` exists, call it (deterministic verify only, no builder) instead of hand-writing findings.
 
 ## Procedure
 

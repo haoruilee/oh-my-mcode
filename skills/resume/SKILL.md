@@ -25,6 +25,7 @@ This skill does **not** register host `/resume`. Host `/resume` continues a Mini
 - Workspace root.
 - On-disk artifacts under `.minimax/runs/<run_id>/`.
 - State tool: `node <plugin-root>/scripts/run-store.mjs`.
+- **MCP first:** if `omm_run_show` / `omm_run_list` / `omm_status` exist, use them instead of hand-writing run files. Host `/resume` is still session resume — this skill restores `.minimax/runs/<run_id>/`. Reuse `run.json.host_session_id` when opening the TUI (`mcode --session <id>` or `mcode --continue`).
 
 ## Procedure
 

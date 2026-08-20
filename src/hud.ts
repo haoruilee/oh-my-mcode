@@ -67,6 +67,7 @@ export function renderHud(model: HudModel): string {
   const lines = [
     `Run: ${run.run_id}  Phase: ${run.phase}  Status: ${status}`,
     `Goal: ${run.goal}`,
+    ...(run.host_session_id ? [`Host session: ${run.host_session_id}`] : []),
     `Explorer ${explorer}  Planner ${planner}  Builder ${builder}  Verifier ${verifier}`,
     `Tasks:`,
   ];

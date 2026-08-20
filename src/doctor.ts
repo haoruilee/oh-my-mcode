@@ -58,7 +58,9 @@ export function runDoctor(opts: { packageOnly?: boolean } = {}): DoctorReport {
 
   const officialPath = path.join(root, ".minimax-plugin/plugin.json");
   const portablePath = path.join(root, "plugin.json");
-  const official = existsSync(officialPath) ? (readJson(officialPath) as { skills?: string[]; name?: string; version?: string }) : null;
+  const official = existsSync(officialPath)
+    ? (readJson(officialPath) as { skills?: string[]; name?: string; version?: string; mcpServers?: string[] })
+    : null;
   const portable = existsSync(portablePath) ? (readJson(portablePath) as { name?: string; version?: string }) : null;
   add({
     id: "manifests",
@@ -118,6 +120,7 @@ export function runDoctor(opts: { packageOnly?: boolean } = {}): DoctorReport {
       "config.ts",
       "worktree.ts",
       "tool-repair.ts",
+      "session.ts",
     ].every((name) => existsSync(path.join(root, "src", name))),
     level: "error",
     message: "TypeScript orchestrator sources present",
@@ -150,6 +153,19 @@ export function runDoctor(opts: { packageOnly?: boolean } = {}): DoctorReport {
       message: `run store write failed: ${(error as Error).message}`,
     });
   }
+
+  const mcpManifest = path.join(root, "mcp.json");
+  const mcpServer = path.join(root, "mcp/server.mjs");
+  const mcpListed = Boolean(official?.mcpServers?.includes("mcp.json"));
+  add({
+    id: "mcp",
+    ok: mcpListed && existsSync(mcpManifest) && existsSync(mcpServer),
+    level: "error",
+    message:
+      mcpListed && existsSync(mcpManifest) && existsSync(mcpServer)
+        ? "mcp.json listed in mcpServers and server file exists"
+        : "mcp.json + mcpServers + mcp/server.mjs required",
+  });
 
   const installed = pluginInstallDir();
   add({

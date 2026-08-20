@@ -86,16 +86,48 @@ oh-my-mcode install
 | `attach [run_id]` | HUD。`--watch` 跟踪事件 |
 | `status [run_id]` | 一次性 HUD |
 | `cancel [run_id]` | 标记 cancelled 并落盘事件 |
-| `inspect <topic>` | tools / skills / agents / context / runs / model-policy |
+| `inspect <topic>` | tools / skills / agents / context / runs / model-policy（context 含 `host_session_id`） |
 | `team <task>` | 扁平团队（显式）。默认仍是顺序 `max` |
-| `doctor` | 宿主 + 包装健康检查 |
+| `doctor` | 宿主 + 包装健康检查（要求 MCP 清单与 server） |
 | `install` | 复制到 `~/.minimax/plugins/oh-my-mcode` |
+
+`max` / `plan` / `team` 支持 `--session <id>`（挂到已有宿主会话）和 `--no-session`（每次 `mcode exec` 冷启动）。默认是 **一个 run 对应一个宿主 session**。
 
 `ship` **不会** `git push`，除非你传了 `--commit` 且工作区足够干净。默认只写说明和命令列表。
 
 ## HUD / inspect / team / evals
 
 `attach` / `status` 与 TUI Skill 读同一份 `.minimax/runs/<id>/`。这是在宿主提供 daemon API 之前的 App/CLI 统一面。我们不宣称已有 App 面板。
+
+## 会话连续性
+
+每个 run 会绑定 **一个宿主 `mcode` session**，并把 `host_session_id`（以及可选的 `host_continue`）写进 `run.json`。该 run 的第一次 `mcode exec` 冷启动（若你传了 `--continue` 则带上它）。返回后从 stream-json 取 session id；宿主没回 id 时会合成稳定的 `omm_<run_id>`，后续调用仍传 `--session` 并加上 `--continue`，让宿主可以按 cwd 恢复最近会话。
+
+同一 workspace 里该 run 的后续阶段（plan / build / verify-llm / review / research / team builder）都传 `--session <id>`。并行 team worktree 除外：它们 cwd 不同，可以使用自己的 session。
+
+`max` / `team` / `plan` 结束后会打印：
+
+```
+mcode --session <id>
+mcode --continue
+```
+
+方便 TUI/App 打开同一宿主会话。`inspect context` 会显示 `host_session_id`。`--no-session` 是测试/逃生口。
+
+## MCP 工具
+
+插件提供无额外依赖的 stdio MCP（`mcp/server.mjs`，由 `mcp.json` 列出）。工作区是 cwd 或 `OMM_WORKSPACE`。TUI 若已有 `omm_*` 工具，请用它们，不要手写 run 文件。
+
+| 工具 | 作用 |
+| --- | --- |
+| `omm_run_create` | 创建 run（`{ goal }`） |
+| `omm_run_show` | 查看 run（`{ run_id? }`） |
+| `omm_run_list` | 列出 runs |
+| `omm_status` | 与 `oh-my-mcode status` 相同的 HUD 文本 |
+| `omm_verify` | 仅确定性验收（无 builder） |
+| `omm_inspect` | inspect 主题（`{ topic, run_id? }`） |
+
+这不是已注册的宿主命令 `/max`。宿主 `/plan` `/goal` `/resume` `/team` 仍是宿主的。
 
 `inspect skills`：清单里有、磁盘上没有 → **错误**（configured but invisible），不是静默丢失。
 
@@ -146,7 +178,7 @@ Accepted **必须**有磁盘上的证据文件。LLM 评判若启用，只读，
 | 宿主 | 包 | 状态 |
 | --- | --- | --- |
 | MiniMax Code CLI / 桌面 | `@minimax-ai/code` **0.1.6** | 按此版本核实 |
-| 公开插件面 | 仅 Skills + MCP | 只发布 Skills |
+| 公开插件面 | 仅 Skills + MCP | 发布 Skills + 便携 MCP（`mcp.json`） |
 | 宿主斜杠命令 | `/plan` `/goal` `/resume` `/team` | 共存；我们不注册它们 |
 | Hooks / Commands / 自定义 Agents | 未公开 | 不宣传为已可用 |
 

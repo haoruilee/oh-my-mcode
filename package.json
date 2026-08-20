@@ -27,6 +27,8 @@
     "examples",
     ".minimax-plugin",
     "plugin.json",
+    "mcp.json",
+    "mcp",
     "icon.png",
     "LICENSE",
     "README.md",

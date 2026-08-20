@@ -184,6 +184,9 @@ function inspectContext(workspace: string, runId?: string): InspectResult {
       evidence_files: evidence.items.length,
       event_count: events.length,
       path: store.dir(id),
+      host_session_id: run.host_session_id || null,
+      host_continue: Boolean(run.host_continue),
+      host_session_source: run.host_session_source || null,
     },
   };
 }
@@ -213,7 +216,10 @@ function inspectModelPolicy(workspace: string): InspectResult {
         cwd: "<workspace>",
         output_format: "stream-json",
         permission: cfg.permission,
-        session: "optional --session",
+        session: "run.json host_session_id (one host session per run; --no-session forces cold start)",
+        continue: "set when the host id was synthesized, or the user passed --continue",
+        output_schema: "planner: schemas/planner-output.schema.json",
+        file: "verifier/review: latest test log and/or summary.md when present",
         prompt_prefix:
           "Role: <explorer|planner|builder|verifier|release> + clipped agents/<role>.md + task body. Prefix shape is stable for evals/replay.",
       },

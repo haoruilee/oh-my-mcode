@@ -3,7 +3,7 @@ import { RunStore } from "./store.js";
 import { ProcessMcode, resolveMcodeInvocation, type McodeClient } from "./mcode.js";
 import { McodeMissingError } from "./util.js";
 import { explorerPrompt } from "./prompts.js";
-import { execWithRepair } from "./tool-repair.js";
+import { applyRequestedSession, emitHostSessionHints, execTracked } from "./session.js";
 import { loadWorkflow } from "./workflows.js";
 
 export interface ResearchOptions {
@@ -12,6 +12,9 @@ export interface ResearchOptions {
   runId?: string;
   mcode?: McodeClient;
   permission?: "ask" | "smart" | "full" | "off";
+  session?: string;
+  noSession?: boolean;
+  continue?: boolean;
 }
 
 function requireClient(opts: ResearchOptions, store: RunStore, runId: string): McodeClient {
@@ -33,17 +36,20 @@ export async function runResearch(opts: ResearchOptions): Promise<RunRecord> {
   const store = new RunStore(opts.workspace);
   const run = opts.runId ? store.load(opts.runId) : store.create(opts.goal || "");
   store.patchRun(run.run_id, { workflow: "research" });
+  applyRequestedSession(store, run.run_id, opts);
   store.setPhase(run.run_id, "DISCOVER");
   const client = requireClient(opts, store, run.run_id);
-  const result = await execWithRepair(
+  const result = await execTracked(
     client,
+    store,
+    run.run_id,
     {
       cwd: opts.workspace,
       prompt: explorerPrompt(run.goal),
       role: "explorer",
       permission: opts.permission === "full" ? "ask" : opts.permission || "ask",
     },
-    { store, runId: run.run_id },
+    opts,
   );
   const note = `# Research\n\nTopic: ${run.goal}\n\nThis run is DISCOVER-only. No builder. No product edits.\n\n## Explorer\n\n${result.text || "(no explorer output)"}\n`;
   store.writeArtifact(run.run_id, "research.md", note);
@@ -54,5 +60,7 @@ export async function runResearch(opts: ResearchOptions): Promise<RunRecord> {
   });
   store.appendEvent(run.run_id, "research_completed", { role: "explorer", builder: false });
   store.evidenceReport(run.run_id);
-  return store.load(run.run_id);
+  const finished = store.load(run.run_id);
+  emitHostSessionHints(finished, () => undefined);
+  return finished;
 }

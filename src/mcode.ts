@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { McodeMissingError, which } from "./util.js";
+import path from "node:path";
+import { McodeMissingError, packageRoot, which } from "./util.js";
 import type { Permission, Role } from "./types.js";
 
 export interface ExecRequest {
@@ -10,6 +11,11 @@ export interface ExecRequest {
   permission: Permission;
   timeoutMs?: number;
   session?: string;
+  continue?: boolean;
+  outputSchema?: string;
+  files?: string[];
+  maxSteps?: number;
+  onEvent?: (event: StreamEvent) => void;
 }
 
 export interface StreamEvent {
@@ -81,6 +87,33 @@ export function parseStreamLine(line: string): StreamEvent {
   }
 }
 
+export const ROLE_EXEC_DEFAULTS: Record<
+  Role,
+  { permission?: Permission; timeoutMs: number; maxSteps: number }
+> = {
+  explorer: { permission: "ask", timeoutMs: 3 * 60 * 1000, maxSteps: 20 },
+  planner: { permission: "ask", timeoutMs: 3 * 60 * 1000, maxSteps: 16 },
+  builder: { timeoutMs: 15 * 60 * 1000, maxSteps: 48 },
+  verifier: { permission: "ask", timeoutMs: 5 * 60 * 1000, maxSteps: 20 },
+  release: { permission: "ask", timeoutMs: 3 * 60 * 1000, maxSteps: 12 },
+};
+
+export function plannerOutputSchemaPath(): string {
+  return path.join(packageRoot(), "schemas", "planner-output.schema.json");
+}
+
+export function applyRoleDefaults(req: ExecRequest): ExecRequest {
+  const defaults = ROLE_EXEC_DEFAULTS[req.role];
+  return {
+    ...req,
+    permission: req.permission || defaults.permission || "ask",
+    timeoutMs: req.timeoutMs ?? defaults.timeoutMs,
+    maxSteps: req.maxSteps ?? defaults.maxSteps,
+    outputSchema:
+      req.outputSchema ?? (req.role === "planner" && existsSync(plannerOutputSchemaPath()) ? plannerOutputSchemaPath() : req.outputSchema),
+  };
+}
+
 export function collectAssistantText(events: StreamEvent[]): string {
   const chunks = events
     .filter((event) => {
@@ -112,6 +145,11 @@ export class ProcessMcode implements McodeClient {
       req.permission,
     ];
     if (req.session) args.push("--session", req.session);
+    if (req.continue) args.push("--continue");
+    if (req.outputSchema) args.push("--output-schema", req.outputSchema);
+    for (const file of req.files || []) args.push("--file", file);
+    if (req.maxSteps && req.maxSteps > 0) args.push("--max-steps", String(req.maxSteps));
+    if (req.timeoutMs && req.timeoutMs > 0) args.push("--timeout", String(Math.max(1, Math.ceil(req.timeoutMs / 1000))));
     args.push(req.prompt);
 
     const rawLines: string[] = [];
@@ -132,7 +170,9 @@ export class ProcessMcode implements McodeClient {
         for (const line of parts) {
           if (!line.trim()) continue;
           rawLines.push(line);
-          events.push(parseStreamLine(line));
+          const event = parseStreamLine(line);
+          events.push(event);
+          req.onEvent?.(event);
         }
       };
       child.stdout?.on("data", onChunk);
@@ -156,10 +196,14 @@ export class ProcessMcode implements McodeClient {
         if (timer) clearTimeout(timer);
         if (buffer.trim()) {
           rawLines.push(buffer);
-          events.push(parseStreamLine(buffer));
+          const event = parseStreamLine(buffer);
+          events.push(event);
+          req.onEvent?.(event);
         }
         if (stderr.trim()) {
-          events.push({ raw: stderr, type: "stderr", text: stderr.trim() });
+          const event = { raw: stderr, type: "stderr", text: stderr.trim() };
+          events.push(event);
+          req.onEvent?.(event);
         }
         resolve(code ?? 1);
       });
@@ -176,7 +220,11 @@ export class ProcessMcode implements McodeClient {
 
 export class StubMcode implements McodeClient {
   constructor(private readonly handler: (req: ExecRequest) => ExecResult | Promise<ExecResult>) {}
-  exec(req: ExecRequest): Promise<ExecResult> {
-    return Promise.resolve(this.handler(req));
+  async exec(req: ExecRequest): Promise<ExecResult> {
+    const result = await this.handler(req);
+    if (req.onEvent) {
+      for (const event of result.events) req.onEvent(event);
+    }
+    return result;
   }
 }

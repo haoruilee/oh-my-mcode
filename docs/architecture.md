@@ -58,7 +58,9 @@ schemas/*.schema.json events, tasks, findings, evidence
 
 ## Schemas
 
-Event types: `run_created`, `phase_changed`, `task_started`, `task_completed`, `tool_called`, `test_ran`, `finding_emitted`, `repair_requested`, `run_accepted`, `run_rejected`, `run_resumed`, plus `review_completed`, `ship_prepared`, `research_completed`, `task_cancelled`, `team_spawned`, `worktree_created`, `hud_attached`, `run_cancelled`.
+Event types: `run_created`, `phase_changed`, `task_started`, `task_completed`, `tool_called`, `test_ran`, `finding_emitted`, `repair_requested`, `run_accepted`, `run_rejected`, `run_resumed`, plus `review_completed`, `ship_prepared`, `research_completed`, `task_cancelled`, `team_spawned`, `worktree_created`, `hud_attached`, `run_cancelled`, `host_session_bound`.
+
+One host session per run (`run.json.host_session_id`). Parallel team worktrees may use their own session because cwd differs. Planner exec uses `--output-schema`; verifier/review attach evidence via `--file`. TUI should call MCP `omm_*` tools when present (`mcp/server.mjs`).
 
 Workflow YAML under `workflows/` is parsed by `src/workflows.ts` and drives stop-after / phase lists.
 
