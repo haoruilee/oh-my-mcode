@@ -37,7 +37,7 @@ State is never "prompt only":
 INTAKE → DISCOVER → PLAN → PLAN_REVIEW → EXECUTE → VERIFY → (REPAIR)* → ACCEPT → RELEASE
 ```
 
-- PLAN_REVIEW writes the plan; default is auto-continue unless the user asked for a plan only.
+- PLAN_REVIEW writes the plan; default is auto-continue unless the user asked for a plan only. Failed discover/plan yields stay in that phase as rejected — `plan` does not sit in PLAN_REVIEW as if a plan was written.
 - EXECUTE follows a **tight Task Contract** (objective, allowed files, acceptance).
 - VERIFY is independent. Only the `verify` skill may set Accepted / Rejected. Accepted is refused without evidence files.
 - REPAIR turns findings into one new Builder task. Bound the loop. Repeated failure signatures stop it.
@@ -54,7 +54,7 @@ scripts/run-store.mjs atomic run store (TUI-safe, no extra CLI)
 scripts/doctor.mjs    package + sample-run checks
 src/harness.ts        one core: submit / subscribe / bind a run
 src/subagent.ts       one role worker, no grandchildren; schema-validated yield
-src/yield.ts          strict worker yield (parent reads structuredOutput.data only)
+src/yield.ts          strict worker yield (parent parses exec.result.answer / assistant JSON / structuredOutput.data)
 src/tps.ts            doctor --tps (unmeasured on stub)
 src/hash.ts           content-hash evidence; stale hash refuses Accept
 src/*.ts              store/verify machine; CLI and MCP call submit
@@ -68,7 +68,7 @@ Event types: `run_created`, `phase_changed`, `task_started`, `task_completed`, `
 
 `src/harness.ts` is the one core: `submit(op)` / subscribe / bind a run (thread). CLI and MCP are surfaces. `src/subagent.ts` spawns one role worker (`mcode exec`) with a Task Contract. No grandchildren. See [harness.md](harness.md).
 
-One host session per run (`run.json.host_session_id`) after the host returns a real id — first exec does not send a synthesized `omm_<runId>` token. Parallel team worktrees may use their own session because cwd differs. Planner/worker exec uses `--output-schema` with the schema JSON object (mcode 0.2.1, not a path); verifier/review attach evidence via `--file`. TUI should call MCP `omm_*` tools when present (`mcp/server.mjs`).
+One host session per run (`run.json.host_session_id`) after the host returns a real id — first exec does not send a synthesized `omm_<runId>` token. Parallel team worktrees may use their own session because cwd differs. Default worker exec does **not** pass `--output-schema` (mcode 0.2.1 returns exit 70 on that path). Schemas stay on disk; TypeScript validates the yield. `OMM_HOST_OUTPUT_SCHEMA=1` opts back into the JSON-object flag. Verifier/review attach evidence via `--file`. TUI should call MCP `omm_*` tools when present (`mcp/server.mjs`).
 
 Workflow YAML under `workflows/` is parsed by `src/workflows.ts` and drives stop-after / phase lists.
 

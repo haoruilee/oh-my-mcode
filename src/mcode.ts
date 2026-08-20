@@ -65,7 +65,7 @@ function asText(value: unknown): string {
   if (Array.isArray(value)) return value.map(asText).filter(Boolean).join("\n");
   if (value && typeof value === "object") {
     const rec = value as Record<string, unknown>;
-    for (const key of ["text", "content", "result", "message", "output"]) {
+    for (const key of ["text", "content", "answer", "result", "message", "output"]) {
       if (key in rec) {
         const inner = asText(rec[key]);
         if (inner) return inner;
@@ -73,6 +73,11 @@ function asText(value: unknown): string {
     }
   }
   return "";
+}
+
+/** Live mcode 0.2.1 `--output-schema` is an internal error (exit 70). Opt in only. */
+export function hostOutputSchemaEnabled(): boolean {
+  return process.env.OMM_HOST_OUTPUT_SCHEMA === "1";
 }
 
 export function parseStreamLine(line: string): StreamEvent {
@@ -110,7 +115,8 @@ export function plannerOutputSchemaPath(): string {
 
 /**
  * mcode 0.2.1 `--output-schema <json>` wants a JSON object string, not a path.
- * Read on-disk schemas and serialize the object. Missing / invalid → omit the flag.
+ * Kept for `OMM_HOST_OUTPUT_SCHEMA=1` experiments. Missing / invalid → omit the flag.
+ * Default exec does not send this flag: live 0.2.1 returns exit 70 (internal) on the schema path.
  */
 export function readOutputSchemaArg(value?: string): string | undefined {
   if (!value) return undefined;
@@ -141,7 +147,7 @@ export function buildExecArgs(req: ExecRequest, prefixArgs: string[] = []): stri
   ];
   if (req.session) args.push("--session", req.session);
   if (req.continue) args.push("--continue");
-  const schema = readOutputSchemaArg(req.outputSchema);
+  const schema = hostOutputSchemaEnabled() ? readOutputSchemaArg(req.outputSchema) : undefined;
   if (schema) args.push("--output-schema", schema);
   for (const file of req.files || []) args.push("--file", file);
   if (req.maxSteps && req.maxSteps > 0) args.push("--max-steps", String(req.maxSteps));
@@ -158,7 +164,10 @@ export function applyRoleDefaults(req: ExecRequest): ExecRequest {
     timeoutMs: req.timeoutMs ?? defaults.timeoutMs,
     maxSteps: req.maxSteps ?? defaults.maxSteps,
     outputSchema:
-      req.outputSchema ?? (req.role === "planner" && existsSync(plannerOutputSchemaPath()) ? plannerOutputSchemaPath() : req.outputSchema),
+      req.outputSchema ??
+      (hostOutputSchemaEnabled() && req.role === "planner" && existsSync(plannerOutputSchemaPath())
+        ? plannerOutputSchemaPath()
+        : req.outputSchema),
   };
 }
 

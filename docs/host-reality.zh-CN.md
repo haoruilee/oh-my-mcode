@@ -63,7 +63,9 @@ MiniMax 生态里有三个不同的 CLI。用户安装步骤里不要混写：
 mcode exec failed: --output-schema requires a JSON object.
 ```
 
-我们读 schema 文件，把序列化后的对象传给宿主；文件不存在则省略该旗标。
+后续实测（0.2.1 / Node 24.19.0）：即使传 JSON 对象，每个 worker `mcode exec` 仍会 **exit 70**（`Sw.internal = 70`，宿主内部错误）。同一条 prompt **不带** `--output-schema` 则 exit 0，`exec.result.answer` 是合法 yield JSON。
+
+默认 argv 因此不传 `--output-schema`。Schema 仍落在磁盘上。Yield 由 TypeScript 在 exec 之后校验（`schemaMode: strict`），从 `exec.result.answer` / assistant JSON / `structuredOutput.data` 解析。实验可设 `OMM_HOST_OUTPUT_SCHEMA=1`；`readOutputSchemaArg` 仍会序列化对象（从不传路径）。
 
 扁平 `oh-my-mcode team` 是 TypeScript 调度器（不派生孙 agent）。它**不是**宿主 Agent Team，也不是递归派生。桌面 `/team` 仍是宿主的。App 面板、已注册的 `/max`、hooks 要等公开 Extension API。
 

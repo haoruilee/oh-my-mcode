@@ -8,6 +8,7 @@ import { runMax, runPlan, runResume } from "../dist/orchestrator.js";
 import { StubMcode } from "../dist/mcode.js";
 import { RunStore } from "../dist/store.js";
 import { main } from "../dist/cli.js";
+import { yieldResult } from "./helpers/yield.mjs";
 
 const fakeMcode = path.resolve("test/fixtures/fake-mcode.mjs");
 
@@ -63,6 +64,46 @@ test("max with stub mcode reaches Accepted when tests pass", async () => {
     assert.ok(types.has(needed), `missing event ${needed}`);
   }
   assert.match(readFileSync(path.join(store.dir(run.run_id), "summary.md"), "utf8"), /accepted/i);
+});
+
+test("plan does not enter PLAN_REVIEW when discover yield fails", async () => {
+  const workspace = project();
+  const run = await runPlan({
+    workspace,
+    goal: "host exit 70",
+    mcode: new StubMcode(async () => ({
+      text: "MCode encountered an internal error",
+      events: [],
+      exitCode: 70,
+      rawLines: [],
+    })),
+  });
+  assert.notEqual(run.phase, "PLAN_REVIEW");
+  assert.equal(run.phase, "DISCOVER");
+  assert.equal(run.status, "rejected");
+  const store = new RunStore(workspace);
+  const failed = JSON.parse(store.readArtifact(run.run_id, "yield-discover.json"));
+  assert.equal(failed.status, "failed");
+  assert.ok(store.loadEvents(run.run_id).some((event) => event.type === "run_rejected" && event.payload.reason === "failed_worker_yield"));
+  assert.doesNotMatch(store.loadPlan(run.run_id), /## Planner/);
+});
+
+test("plan does not enter PLAN_REVIEW when planner yield fails", async () => {
+  const workspace = project();
+  const run = await runPlan({
+    workspace,
+    goal: "planner died",
+    mcode: new StubMcode(async (req) => {
+      if (req.role === "explorer") return yieldResult("looked around");
+      return { text: "internal error", events: [], exitCode: 70, rawLines: [] };
+    }),
+  });
+  assert.equal(run.phase, "PLAN");
+  assert.equal(run.status, "rejected");
+  assert.notEqual(run.phase, "PLAN_REVIEW");
+  const store = new RunStore(workspace);
+  const failed = JSON.parse(store.readArtifact(run.run_id, "yield-plan.json"));
+  assert.equal(failed.status, "failed");
 });
 
 test("plan stops at PLAN_REVIEW and does not Accept", async () => {

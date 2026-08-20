@@ -65,8 +65,8 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 2. **Harness not prompt pack?** Yes — `src/yield.ts` + `schemas/worker-yield.schema.json`. `schemaMode: strict`. Role files stayed short.
 3. **One core, many surfaces?** Parent (`orchestrator` / `harness` consumers) reads `structuredOutput.data` only. CLI and MCP do not parse worker prose.
 4. **Subagents are workers not trees?** Yield does not add a spawn API. One reminder, then fail. No grandchild channel.
-5. **MiniMax-native?** Yes — host `--output-schema` when the role is not planner. Planner keeps `planner-output.schema.json`; a planner graph is not treated as a yield.
-6. **Host honesty?** We do not dump raw host JSONL into the next prompt (the Claude Code leak Oh My Pi called out). JSONL may be stored as evidence.
+5. **MiniMax-native?** Yes — schemas stay on disk (`worker-yield.schema.json`, `planner-output.schema.json`). Yield is validated in TypeScript (`schemaMode: strict`). Host `--output-schema` is opt-in only (`OMM_HOST_OUTPUT_SCHEMA=1`); live 0.2.1 exits 70 on that path.
+6. **Host honesty?** We do not dump raw host JSONL into the next prompt (the Claude Code leak Oh My Pi called out). JSONL may be stored as evidence. Parent parses `exec.result.answer`, assistant JSON, or `structuredOutput.data` if the host ever sends it.
 7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `team`.
 8. **Codex-as-platform fit?** Worker turn returns a typed object. EQ can record the artifact. SQ does not change.
 
@@ -116,14 +116,25 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 
 ## 11. Host `--output-schema` JSON object (mcode 0.2.1)
 
-1. **Verified delivery?** Yes — this is what made verified delivery actually talk to the live host. Passing a filesystem path made every worker `mcode exec` exit 2 in ~2.6s. Sending the schema object is how `--output-schema` works.
-2. **Harness not prompt pack?** Yes — `ProcessMcode` reads `schemas/*.schema.json` and passes the serialized object. Yield semantics stay `schemaMode: strict` / `structuredOutput.data`.
+1. **Verified delivery?** Passing a filesystem path made every worker `mcode exec` exit 2 (`--output-schema requires a JSON object`). `readOutputSchemaArg` still serializes the on-disk schema to a JSON object for the opt-in path.
+2. **Harness not prompt pack?** Yes — `ProcessMcode` can read `schemas/*.schema.json` and pass the serialized object. Yield semantics stay `schemaMode: strict` in TypeScript.
 3. **One core, many surfaces?** Same exec argv for `plan` / `max` / `team`. CLI and MCP do not invent a second schema flag.
 4. **Subagents are workers not trees?** Unchanged. One `mcode exec` per worker.
 5. **MiniMax-native?** Yes — matches `mcode exec --help` on 0.2.1: `--output-schema <json>  validate the final JSON result against a JSON Schema`.
-6. **Host honesty?** **Pass, enforced.** Reproduced host error: `mcode exec failed: --output-schema requires a JSON object.` Argv is a JSON object (starts with `{`), never a `.json` path. Missing schema file omits the flag. First exec does not send a synthesized `omm_<runId>` session / `--continue` until the host returns a real session id.
+6. **Host honesty?** **Pass, enforced.** Reproduced host error: `mcode exec failed: --output-schema requires a JSON object.` When the flag is sent, argv is a JSON object (starts with `{`), never a `.json` path. Missing schema file omits the flag.
 7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `plan` / `team`.
-8. **Codex-as-platform fit?** Host validates the typed yield. We do not invent TPS numbers or add hashline.
+8. **Codex-as-platform fit?** We keep the reader. We do not depend on the host flag for correctness.
+
+## 12. Do not send host `--output-schema` on mcode 0.2.1 (live follow-up)
+
+1. **Verified delivery?** Yes — this is what made verified delivery actually talk to the live host. With `--output-schema` still set (JSON object, PR #8), every worker `mcode exec` returned **exit 70** (`Sw.internal = 70` — "MCode encountered an internal error") on mcode 0.2.1 / Node 24.19.0. Also saw better-sqlite3 + Node 24 abort 134. **Without** the flag, the same prompt exits 0 in 19.1s: `exec.result.status=succeeded`, answer `{"status":"ok","summary":"pong","findings":[],"artifacts":[]}`, `message.usage` present (inputTokens 470, outputTokens 47, cacheReadTokens 21497, requestDurationMs 4226).
+2. **Harness not prompt pack?** Yes — schemas stay on disk. `schemaMode: strict` validates `exec.result.answer` / assistant JSON / `structuredOutput.data` in TypeScript. Invalid → one reminder retry → failed yield.
+3. **One core, many surfaces?** Default argv omits `--output-schema`. `OMM_HOST_OUTPUT_SCHEMA=1` is the only opt-in. `plan` / `max` / `team` share the same gate.
+4. **Subagents are workers not trees?** Unchanged. One `mcode exec` per worker.
+5. **MiniMax-native?** Yes — we follow the live host, not the help text. Current 0.2.1 output-schema path is not reliable.
+6. **Host honesty?** **Pass, enforced.** We do not depend on host `--output-schema` for correctness. Failed discover/plan yields stay in that phase as `rejected`; `plan` does not sit in PLAN_REVIEW or auto-continue as if a plan was written. Parent never dumps raw JSONL into the next prompt.
+7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `plan` / `team`.
+8. **Codex-as-platform fit?** Typed yield is a harness concern. We do not invent TPS numbers or add hashline.
 
 ## Failures we refused
 

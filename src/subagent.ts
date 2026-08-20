@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { CliError } from "./util.js";
 import type { Permission, Role, TaskContract } from "./types.js";
-import type { ExecRequest, ExecResult, McodeClient } from "./mcode.js";
+import { hostOutputSchemaEnabled, type ExecRequest, type ExecResult, type McodeClient } from "./mcode.js";
 import { execTracked, type SessionOpts } from "./session.js";
 import type { RunStore } from "./store.js";
 import { builderPrompt } from "./prompts.js";
@@ -75,7 +75,8 @@ function resolveYield(result: ExecResult, role: Role): { ok: true; data: WorkerY
 /**
  * One harness-spawned role worker → one `mcode exec`.
  * Workers do not receive this function. Nested spawn throws.
- * Parent reads `structuredOutput.data` (schema-validated yield) only.
+ * Parent validates yield in TypeScript (`schemaMode: strict`).
+ * Host `--output-schema` is opt-in (`OMM_HOST_OUTPUT_SCHEMA=1`); live 0.2.1 exits 70 on that path.
  */
 export async function spawnSubagent(req: SpawnRequest, ctx: SpawnContext): Promise<SpawnResult> {
   const parent = spawnFrame.getStore();
@@ -99,7 +100,12 @@ async function execOnce(req: SpawnRequest, ctx: SpawnContext, prompt: string): P
     maxSteps: req.maxSteps,
     outputSchema: req.outputSchema,
   };
-  if (!execReq.outputSchema && req.role !== "planner" && yieldSchemaAvailable()) {
+  if (
+    hostOutputSchemaEnabled() &&
+    !execReq.outputSchema &&
+    req.role !== "planner" &&
+    yieldSchemaAvailable()
+  ) {
     execReq.outputSchema = workerYieldSchemaPath();
   }
   if (ctx.store && ctx.runId) {
