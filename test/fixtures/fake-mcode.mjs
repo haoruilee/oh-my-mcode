@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 /** Stand-in for `mcode exec --output-format stream-json`. No network. */
+import { writeFileSync } from "node:fs";
+
 function emit(obj) {
   process.stdout.write(`${JSON.stringify(obj)}\n`);
+}
+
+function rejectOutputSchemaPath() {
+  process.stderr.write("mcode exec failed: --output-schema requires a JSON object.\n");
+  process.exit(2);
 }
 
 function yieldOk(summary, artifacts = []) {
@@ -13,9 +20,25 @@ function emitYield(summary, artifacts = [], extra = {}) {
 }
 
 const args = process.argv.slice(2);
+if (process.env.OMM_FAKE_ARGV) {
+  writeFileSync(process.env.OMM_FAKE_ARGV, `${JSON.stringify(args)}\n`);
+}
 if (args[0] === "--version") {
-  process.stdout.write("0.1.6\n");
+  process.stdout.write("0.2.1\n");
   process.exit(0);
+}
+
+const schemaIdx = args.indexOf("--output-schema");
+if (schemaIdx >= 0) {
+  const schema = args[schemaIdx + 1] || "";
+  const trimmed = schema.trim();
+  if (!trimmed.startsWith("{")) rejectOutputSchemaPath();
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) rejectOutputSchemaPath();
+  } catch {
+    rejectOutputSchemaPath();
+  }
 }
 
 const prompt = args.at(-1) || "";

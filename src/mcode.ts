@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { McodeMissingError, packageRoot, which } from "./util.js";
+import { McodeMissingError, packageRoot, parseJsonObject, which } from "./util.js";
 import type { Permission, Role, UsageTotals } from "./types.js";
 import { extractUsage } from "./usage.js";
 import { extractStructuredOutput } from "./yield.js";
@@ -108,6 +108,48 @@ export function plannerOutputSchemaPath(): string {
   return path.join(packageRoot(), "schemas", "planner-output.schema.json");
 }
 
+/**
+ * mcode 0.2.1 `--output-schema <json>` wants a JSON object string, not a path.
+ * Read on-disk schemas and serialize the object. Missing / invalid → omit the flag.
+ */
+export function readOutputSchemaArg(value?: string): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  const fromText = (text: string): string | undefined => {
+    const rec = parseJsonObject(text, {});
+    return Object.keys(rec).length > 0 ? JSON.stringify(rec) : undefined;
+  };
+  if (trimmed.startsWith("{")) return fromText(trimmed);
+  if (!existsSync(value)) return undefined;
+  try {
+    return fromText(readFileSync(value, "utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
+export function buildExecArgs(req: ExecRequest, prefixArgs: string[] = []): string[] {
+  const args = [
+    ...prefixArgs,
+    "exec",
+    "--cwd",
+    req.cwd,
+    "--output-format",
+    "stream-json",
+    "--permission",
+    req.permission,
+  ];
+  if (req.session) args.push("--session", req.session);
+  if (req.continue) args.push("--continue");
+  const schema = readOutputSchemaArg(req.outputSchema);
+  if (schema) args.push("--output-schema", schema);
+  for (const file of req.files || []) args.push("--file", file);
+  if (req.maxSteps && req.maxSteps > 0) args.push("--max-steps", String(req.maxSteps));
+  if (req.timeoutMs && req.timeoutMs > 0) args.push("--timeout", String(Math.max(1, Math.ceil(req.timeoutMs / 1000))));
+  args.push(req.prompt);
+  return args;
+}
+
 export function applyRoleDefaults(req: ExecRequest): ExecRequest {
   const defaults = ROLE_EXEC_DEFAULTS[req.role];
   return {
@@ -140,23 +182,7 @@ export function collectAssistantText(events: StreamEvent[]): string {
 export class ProcessMcode implements McodeClient {
   async exec(req: ExecRequest): Promise<ExecResult> {
     const { command, prefixArgs } = resolveMcodeInvocation();
-    const args = [
-      ...prefixArgs,
-      "exec",
-      "--cwd",
-      req.cwd,
-      "--output-format",
-      "stream-json",
-      "--permission",
-      req.permission,
-    ];
-    if (req.session) args.push("--session", req.session);
-    if (req.continue) args.push("--continue");
-    if (req.outputSchema) args.push("--output-schema", req.outputSchema);
-    for (const file of req.files || []) args.push("--file", file);
-    if (req.maxSteps && req.maxSteps > 0) args.push("--max-steps", String(req.maxSteps));
-    if (req.timeoutMs && req.timeoutMs > 0) args.push("--timeout", String(Math.max(1, Math.ceil(req.timeoutMs / 1000))));
-    args.push(req.prompt);
+    const args = buildExecArgs(req, prefixArgs);
 
     const rawLines: string[] = [];
     const events: StreamEvent[] = [];

@@ -114,6 +114,17 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 7. **Hero stays `max`?** Yes — doctor is a power tool.
 8. **Codex-as-platform fit?** Health submission against the host runtime.
 
+## 11. Host `--output-schema` JSON object (mcode 0.2.1)
+
+1. **Verified delivery?** Yes — this is what made verified delivery actually talk to the live host. Passing a filesystem path made every worker `mcode exec` exit 2 in ~2.6s. Sending the schema object is how `--output-schema` works.
+2. **Harness not prompt pack?** Yes — `ProcessMcode` reads `schemas/*.schema.json` and passes the serialized object. Yield semantics stay `schemaMode: strict` / `structuredOutput.data`.
+3. **One core, many surfaces?** Same exec argv for `plan` / `max` / `team`. CLI and MCP do not invent a second schema flag.
+4. **Subagents are workers not trees?** Unchanged. One `mcode exec` per worker.
+5. **MiniMax-native?** Yes — matches `mcode exec --help` on 0.2.1: `--output-schema <json>  validate the final JSON result against a JSON Schema`.
+6. **Host honesty?** **Pass, enforced.** Reproduced host error: `mcode exec failed: --output-schema requires a JSON object.` Argv is a JSON object (starts with `{`), never a `.json` path. Missing schema file omits the flag. First exec does not send a synthesized `omm_<runId>` session / `--continue` until the host returns a real session id.
+7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `plan` / `team`.
+8. **Codex-as-platform fit?** Host validates the typed yield. We do not invent TPS numbers or add hashline.
+
 ## Failures we refused
 
 - Did not add a second JSON-RPC next to MCP.
