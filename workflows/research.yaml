@@ -1,0 +1,14 @@
+# Consumed by src/workflows.ts. Not a host slash command.
+id: research
+kind: skill-and-cli-workflow
+entry:
+  tui: "research <topic>"
+  not_a_slash_command: true
+phases:
+  - INTAKE
+  - DISCOVER
+rules:
+  no_product_edits: true
+  no_builder: true
+  stop_after: DISCOVER
+store: <workspace>/.minimax/runs/<run_id>/

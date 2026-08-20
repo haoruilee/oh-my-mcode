@@ -12,7 +12,7 @@ export const PHASES = [
 
 export type Phase = (typeof PHASES)[number];
 
-export const STATUSES = ["active", "accepted", "rejected", "blocked"] as const;
+export const STATUSES = ["active", "accepted", "rejected", "blocked", "cancelled"] as const;
 export type RunStatus = (typeof STATUSES)[number];
 
 export const EVENT_TYPES = [
@@ -27,6 +27,14 @@ export const EVENT_TYPES = [
   "run_accepted",
   "run_rejected",
   "run_resumed",
+  "review_completed",
+  "ship_prepared",
+  "research_completed",
+  "task_cancelled",
+  "team_spawned",
+  "worktree_created",
+  "hud_attached",
+  "run_cancelled",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -54,6 +62,10 @@ export interface RunRecord {
   workspace: string;
   repair_count?: number;
   last_failure_signature?: string;
+  max_repairs?: number;
+  ralph?: boolean;
+  team?: boolean;
+  workflow?: string;
 }
 
 export interface RunEvent {

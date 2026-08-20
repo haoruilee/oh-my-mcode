@@ -1,0 +1,29 @@
+{
+  "plugin": "oh-my-mcode",
+  "harness": "evals/runner.mjs",
+  "note": "Fixture harness only. Not a production ΔY statistic.",
+  "ok": true,
+  "results": [
+    {
+      "fixture": "pass",
+      "verified_completion": true,
+      "repairs": 0,
+      "interventions": 0
+    },
+    {
+      "fixture": "fail-then-repair",
+      "verified_completion": true,
+      "repairs": 1
+    },
+    {
+      "fixture": "plan-only",
+      "verified_completion": false,
+      "phase": "PLAN_REVIEW",
+      "resume_success": true
+    }
+  ],
+  "totals": {
+    "verified_completion": 2,
+    "resume_success": 1
+  }
+}

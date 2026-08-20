@@ -10,7 +10,9 @@
   "exampleQueries": [
     "Max mode: fix the failing auth tests and prove they pass",
     "Make a plan only for migrating this module to Postgres",
-    "Re-verify the current run against its acceptance criteria"
+    "Re-verify the current run against its acceptance criteria",
+    "Review this run without accepting it",
+    "Research how auth tokens are rotated — do not implement"
   ],
   "apps": [],
   "mcpServers": [],
@@ -19,6 +21,10 @@
     "skills/plan/SKILL.md",
     "skills/verify/SKILL.md",
     "skills/resume/SKILL.md",
-    "skills/doctor/SKILL.md"
+    "skills/doctor/SKILL.md",
+    "skills/review/SKILL.md",
+    "skills/ship/SKILL.md",
+    "skills/research/SKILL.md",
+    "skills/team/SKILL.md"
   ]
 }

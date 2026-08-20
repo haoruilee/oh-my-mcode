@@ -44,7 +44,7 @@ const PHASES = [
   "RELEASE",
 ];
 
-const STATUSES = ["active", "accepted", "rejected", "blocked"];
+const STATUSES = ["active", "accepted", "rejected", "blocked", "cancelled"];
 
 const EVENT_TYPES = [
   "run_created",
@@ -58,6 +58,14 @@ const EVENT_TYPES = [
   "run_accepted",
   "run_rejected",
   "run_resumed",
+  "review_completed",
+  "ship_prepared",
+  "research_completed",
+  "task_cancelled",
+  "team_spawned",
+  "worktree_created",
+  "hud_attached",
+  "run_cancelled",
 ];
 
 const EVIDENCE_KINDS = ["command", "test", "diff", "log", "other"];
@@ -85,6 +93,7 @@ Commands:
   write-findings    Atomically replace findings.json; may Accept / Reject
   add-evidence      Copy a file into evidence/ and index it
   evidence-report   Rebuild summary.md from store artifacts
+  cancel            Mark the run cancelled (not Accepted)
 
 Common flags:
   --workspace, -w   Project root (default: cwd or OMM_WORKSPACE)
@@ -524,6 +533,48 @@ function readEvents(dir) {
     .map((line) => JSON.parse(line));
 }
 
+function cancelRun(workspace, runId, reason = "user cancelled") {
+  const dir = runDir(workspace, runId);
+  return withLock(dir, () => {
+    const current = loadRun(workspace, runId);
+    if (current.status === "accepted") fail("accepted runs cannot be cancelled; use ship to release");
+    const next = touchRun(workspace, runId, { status: "cancelled" });
+    const tasksPath = path.join(dir, "tasks.json");
+    if (existsSync(tasksPath)) {
+      const tasks = readJson(tasksPath);
+      let changed = false;
+      for (const task of tasks.tasks || []) {
+        if (task.status === "pending" || task.status === "in_progress") {
+          task.status = "cancelled";
+          changed = true;
+          appendEventLine(dir, {
+            id: newEventId(),
+            ts: next.updated_at,
+            type: "task_cancelled",
+            run_id: runId,
+            phase: next.phase,
+            task_id: task.id,
+            payload: { title: task.title, reason },
+          });
+        }
+      }
+      if (changed) {
+        tasks.updated_at = nowIso();
+        writeJson(tasksPath, tasks);
+      }
+    }
+    appendEventLine(dir, {
+      id: newEventId(),
+      ts: next.updated_at,
+      type: "run_cancelled",
+      run_id: runId,
+      phase: next.phase,
+      payload: { reason, from_status: current.status },
+    });
+    return next;
+  });
+}
+
 function evidenceReport(workspace, runId) {
   const dir = runDir(workspace, runId);
   const run = loadRun(workspace, runId);
@@ -662,6 +713,11 @@ function main() {
 
   if (command === "evidence-report") {
     printJson(evidenceReport(workspace, runId));
+    return;
+  }
+
+  if (command === "cancel") {
+    printJson(cancelRun(workspace, runId, args.flags.reason || "user cancelled"));
     return;
   }
 

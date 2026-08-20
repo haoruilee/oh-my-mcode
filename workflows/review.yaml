@@ -1,0 +1,13 @@
+# Consumed by src/workflows.ts. Not a host slash command.
+id: review
+kind: skill-and-cli-workflow
+entry:
+  tui: "review this run"
+  not_a_slash_command: true
+phases:
+  - VERIFY
+rules:
+  read_only: true
+  cannot_accept: true
+  writes: review.json
+store: <workspace>/.minimax/runs/<run_id>/

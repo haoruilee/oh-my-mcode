@@ -259,7 +259,7 @@ function checkRolesAndWorkflows() {
     const rel = `agents/${role}.md`;
     if (!existsSync(path.join(ROOT, rel))) err(`missing role contract: ${rel}`);
   }
-  for (const name of ["max.yaml", "plan.yaml", "verify.yaml"]) {
+  for (const name of ["max.yaml", "plan.yaml", "verify.yaml", "review.yaml", "ship.yaml", "research.yaml", "team.yaml"]) {
     const rel = `workflows/${name}`;
     if (!existsSync(path.join(ROOT, rel))) err(`missing workflow: ${rel}`);
   }
@@ -271,6 +271,7 @@ function checkRolesAndWorkflows() {
     "docs/architecture.md",
     "docs/host-reality.zh-CN.md",
     "docs/architecture.zh-CN.md",
+    "docs/roadmap.md",
   ];
   for (const rel of requiredDocs) {
     if (!existsSync(path.join(ROOT, rel))) err(`missing ${rel}`);
@@ -442,17 +443,45 @@ function checkCliPackage() {
   if (!pkg.bin || pkg.bin["oh-my-mcode"] !== "bin/oh-my-mcode.mjs" || pkg.bin.omm !== "bin/oh-my-mcode.mjs") {
     err("package.json must expose bins oh-my-mcode and omm");
   }
-  for (const name of ["cli.ts", "orchestrator.ts", "mcode.ts", "verify.ts", "store.ts", "doctor.ts"]) {
+  for (const name of [
+    "cli.ts",
+    "orchestrator.ts",
+    "mcode.ts",
+    "verify.ts",
+    "store.ts",
+    "doctor.ts",
+    "hud.ts",
+    "team.ts",
+    "inspect.ts",
+    "config.ts",
+    "worktree.ts",
+    "tool-repair.ts",
+  ]) {
     if (!existsSync(path.join(ROOT, "src", name))) err(`missing src/${name}`);
   }
   const bin = path.join(ROOT, "bin/oh-my-mcode.mjs");
   if (!existsSync(bin)) err("missing bin/oh-my-mcode.mjs");
   try {
     const help = execFileSync(process.execPath, [bin, "--help"], { encoding: "utf8" });
-    for (const cmd of ["max", "plan", "verify", "resume", "doctor", "install"]) {
+    for (const cmd of [
+      "max",
+      "plan",
+      "verify",
+      "resume",
+      "review",
+      "ship",
+      "research",
+      "attach",
+      "status",
+      "cancel",
+      "inspect",
+      "team",
+      "doctor",
+      "install",
+    ]) {
       if (!help.includes(cmd)) err(`CLI --help missing ${cmd}`);
     }
-    note("CLI --help lists max/plan/verify/resume/doctor/install");
+    note("CLI --help lists max plan verify resume review ship research attach status cancel inspect team doctor install");
   } catch (error) {
     err(`CLI --help failed: ${error.message}`);
   }

@@ -9,6 +9,10 @@ function roleFile(name: string): string {
   return readFileSync(filePath, "utf8").trim();
 }
 
+export function clipRole(name: string, max = 1800): string {
+  return clip(roleFile(name), max);
+}
+
 function clip(text: string, max = 1800): string {
   if (text.length <= max) return text;
   return `${text.slice(0, max)}\n…(truncated)`;
@@ -44,6 +48,41 @@ Write:
 Acceptance must be runnable commands. One builder task per change. Do not implement.`;
 }
 
+export function plannerTeamPrompt(goal: string, discovery: string): string {
+  return `${plannerPrompt(goal, discovery)}
+
+Team mode: emit a DAG with roles explorer/planner/builder/verifier/release.
+Independent builder tasks (no shared files, empty depends_on) MAY run in parallel.
+Do not nest sub-agents. The TypeScript orchestrator is the only scheduler.
+Builders never mark Accepted.`;
+}
+
+export function reviewerPrompt(input: {
+  goal: string;
+  plan: string;
+  evidenceCount: number;
+  currentStatus: string;
+  diff: string;
+  roleContract: string;
+}): string {
+  return `Role: Reviewer (read-only overlay). You cannot Accept.
+${input.roleContract}
+
+Goal: ${input.goal}
+Current status: ${input.currentStatus}
+Evidence files: ${input.evidenceCount}
+
+Plan:
+${clip(input.plan, 800)}
+
+Diff stat:
+${clip(input.diff || "(none)", 400)}
+
+Write findings only. Reply with JSON:
+{"findings":[{"title":"...","detail":"...","severity":"note"}],"notes":["review cannot Accept"]}
+Do not edit files. Do not set Accepted.`;
+}
+
 export function builderPrompt(contract: TaskContract): string {
   return `Role: Builder. One task only. No scope creep. Do not mark Accepted.
 ${clip(roleFile("builder"))}
@@ -56,7 +95,8 @@ ${contract.acceptance.map((line) => `- ${line}`).join("\n")}
 Constraints:
 ${contract.constraints.map((line) => `- ${line}`).join("\n")}
 
-Implement this task. Run relevant tests if cheap. Summarize files changed.`;
+Implement this task. Run relevant tests if cheap. Summarize files changed.
+Do not spawn sub-agents. The orchestrator is the only scheduler.`;
 }
 
 export function verifierPrompt(input: {

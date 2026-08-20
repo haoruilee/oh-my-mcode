@@ -1,6 +1,6 @@
 # Architecture
 
-v0 is **OMM Lite**: one host agent + this workflow. The public product is a **Skill-first plugin**. Role files are contracts, not spawned personas. No empty monorepo of fake packages. No second user-facing CLI.
+The public product is a **Skill-first plugin** plus the `oh-my-mcode` / `omm` CLI that owns the loop. Role files are contracts, not spawned personas. No empty monorepo of fake packages (`workflow-engine`, `sdk`, `app-widgets`).
 
 ## Promise
 
@@ -10,8 +10,9 @@ Not more agents, more skills, or longer memory. Verified completion with evidenc
 
 | Surface | Entry | Who drives the loop |
 | --- | --- | --- |
-| TUI (the product) | "max mode: …" / "make a verified plan" / "re-verify this run" | Skills `max` / `plan` / `verify` / `resume` |
-| Headless later | `mcode exec` + a prompt that loads the max skill | still `mcode`, not a wrapper binary |
+| TUI | "max mode: …" / "make a verified plan" / "re-verify this run" | Skills `max` / `plan` / `verify` / `resume` / `review` / `ship` / `research` / `team` |
+| CLI (owns the loop) | `oh-my-mcode max` / `omm` | TypeScript orchestrator |
+| Headless | `mcode exec` + a prompt that loads the max skill | still `mcode`, not an `mmx` / `mavis` wrapper |
 
 State is never "prompt only":
 
@@ -28,7 +29,7 @@ State is never "prompt only":
 
 `run_id` is `run_` + Crockford-base32 timestamp + random. Writes are temp + rename. Single writer (`.lock`).
 
-`scripts/run-store.mjs` is the no-build tool skills should call for state changes. TypeScript under `src/` is the same contract used by tests/CI. It is not advertised as `omm` or `mavis max`.
+`scripts/run-store.mjs` is the no-build tool skills should call for state changes. TypeScript under `src/` is the same contract used by the CLI, tests, and CI. Alias `omm` is this binary, not `mavis max`.
 
 ## Phase machine
 
@@ -57,14 +58,19 @@ schemas/*.schema.json events, tasks, findings, evidence
 
 ## Schemas
 
-Event types: `run_created`, `phase_changed`, `task_started`, `task_completed`, `tool_called`, `test_ran`, `finding_emitted`, `repair_requested`, `run_accepted`, `run_rejected`, `run_resumed`.
+Event types: `run_created`, `phase_changed`, `task_started`, `task_completed`, `tool_called`, `test_ran`, `finding_emitted`, `repair_requested`, `run_accepted`, `run_rejected`, `run_resumed`, plus `review_completed`, `ship_prepared`, `research_completed`, `task_cancelled`, `team_spawned`, `worktree_created`, `hud_attached`, `run_cancelled`.
 
-## What v0 will not do
+Workflow YAML under `workflows/` is parsed by `src/workflows.ts` and drives stop-after / phase lists.
 
-- Agent Team / recursive spawn
+Flat team (`src/team.ts`) schedules independent builders. Optional worktrees: `src/worktree.ts`. HUD: `src/hud.ts`. Config: `src/config.ts`. Tool repair: `src/tool-repair.ts`.
+
+## What we will not do
+
+- Recursive spawn / Sisyphus orchestrator (project-manager duties stay in TypeScript)
 - Register hooks, slash commands, or custom host agents
-- Replace host Plan Mode
-- Ship `omm` / `mavis max` / `mmx` as a user-facing wrapper
+- Replace host Plan Mode or host `/team`
+- Ship `mavis max` / `mmx` wrappers — the host binary remains `mcode`
 - Tell anyone to install via MiniMax-AI/skills
 - Telemetry, install-time network, secrets
 - Symlinks inside the package
+- Advertise App panels or registered `/max` as shipped (see `docs/roadmap.md`)

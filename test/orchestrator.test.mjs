@@ -147,7 +147,22 @@ test("cli --help lists hero commands", async () => {
     process.stdout.write = orig;
   }
   const help = chunks.join("");
-  for (const cmd of ["max", "plan", "verify", "resume", "doctor", "install"]) {
+  for (const cmd of [
+    "max",
+    "plan",
+    "verify",
+    "resume",
+    "review",
+    "ship",
+    "research",
+    "attach",
+    "status",
+    "cancel",
+    "inspect",
+    "team",
+    "doctor",
+    "install",
+  ]) {
     assert.match(help, new RegExp(cmd));
   }
 });

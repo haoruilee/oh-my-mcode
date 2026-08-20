@@ -1,4 +1,4 @@
-# Documentation only. This is NOT a MiniMax Code slash command.
+# Consumed by src/workflows.ts. This is NOT a MiniMax Code slash command.
 # Commands are not a public Agent Plugin capability on mcode 0.1.6.
 # The host already has /plan /goal /resume. We do not register /max.
 id: max

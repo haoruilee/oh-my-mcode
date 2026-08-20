@@ -1,6 +1,6 @@
 # 架构
 
-v0 是 **OMM Lite**：一个宿主 agent + 本工作流。对外产品是 **Skill 优先的插件**。角色文件是契约，不是被拉起的人格。没有空壳 monorepo。没有第二条用户命令行。
+对外产品是 **Skill 优先的插件**，加上拥有循环的 `oh-my-mcode` / `omm` CLI。角色文件是契约，不是被拉起的人格。没有空壳 monorepo。
 
 ## 承诺
 
@@ -10,8 +10,9 @@ v0 是 **OMM Lite**：一个宿主 agent + 本工作流。对外产品是 **Skil
 
 | 表面 | 入口 | 谁驱动循环 |
 | --- | --- | --- |
-| TUI（产品） | 「max mode: …」/「make a verified plan」/「re-verify this run」 | Skill `max` / `plan` / `verify` / `resume` |
-| 以后的无界面 | `mcode exec` + 加载 max skill 的提示词 | 仍然是 `mcode`，不是包装器 |
+| TUI | 「max mode: …」/「make a verified plan」/「re-verify this run」 | Skill `max` / `plan` / `verify` / `resume` / `review` / `ship` / `research` / `team` |
+| CLI（拥有循环） | `oh-my-mcode max` / `omm` | TypeScript 编排器 |
+| 无界面 | `mcode exec` + 加载 max skill 的提示词 | 仍然是 `mcode`，不是 `mmx` / `mavis` 包装器 |
 
 状态不只活在 prompt 里：`<workspace>/.minimax/runs/<run_id>/`。
 
