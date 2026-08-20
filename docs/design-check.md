@@ -136,6 +136,17 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `plan` / `team`.
 8. **Codex-as-platform fit?** Typed yield is a harness concern. We do not invent TPS numbers or add hashline.
 
+## 13. Host `--timeout` needs a unit suffix (mcode 0.2.1)
+
+1. **Verified delivery?** Yes — after PR #9, `oh-my-mcode plan` bound a real host session (`mvs_…`, `host_session_source: host`) then discover failed: `invalid worker yield (exit 6)`. In `@minimax-ai/code` cli.js, `Sw.timeout = 6`. Host parser `chm` is `/^(\d+)(ms|s|m|h)?$/i` — no unit → multiplier 1 → milliseconds. We sent `--timeout 180` for a 3-minute explorer default; host treated it as 180ms. Live: first_token_ms ~6030, then timeout. `doctor --smoke` omits `--timeout` and succeeded in 18s. Manual `mcode exec --timeout 45s` succeeded.
+2. **Harness not prompt pack?** Yes — `formatHostTimeout` in `src/mcode.ts`. Role files unchanged.
+3. **One core, many surfaces?** Same `buildExecArgs` for `plan` / `max` / `team`. Role defaults stay milliseconds internally.
+4. **Subagents are workers not trees?** Unchanged. One `mcode exec` per worker.
+5. **MiniMax-native?** Yes — we follow the live host parser, not our assumption that a bare integer is seconds.
+6. **Host honesty?** **Pass, enforced.** `--timeout` always has a unit (`180s` or `180000ms`), never `180`. Tests + fake-mcode require `/^\d+(ms|s|m|h)$/`.
+7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `plan` / `team`.
+8. **Codex-as-platform fit?** We did not add hashline, invent TPS, or npm publish.
+
 ## Failures we refused
 
 - Did not add a second JSON-RPC next to MCP.

@@ -11,6 +11,12 @@ function rejectOutputSchemaPath() {
   process.exit(2);
 }
 
+/** Live host `chm`: no unit → milliseconds. Bare `180` is 180ms → exit 6 (Sw.timeout). */
+function rejectBareTimeout() {
+  process.stderr.write("mcode exec failed: timeout (exit 6). Bare --timeout integers are milliseconds.\n");
+  process.exit(6);
+}
+
 function yieldOk(summary, artifacts = []) {
   return { status: "ok", summary, findings: [], artifacts };
 }
@@ -26,6 +32,12 @@ if (process.env.OMM_FAKE_ARGV) {
 if (args[0] === "--version") {
   process.stdout.write("0.2.1\n");
   process.exit(0);
+}
+
+const timeoutIdx = args.indexOf("--timeout");
+if (timeoutIdx >= 0) {
+  const value = args[timeoutIdx + 1] || "";
+  if (!/^\d+(ms|s|m|h)$/i.test(value)) rejectBareTimeout();
 }
 
 const schemaIdx = args.indexOf("--output-schema");
