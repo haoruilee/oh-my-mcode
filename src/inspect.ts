@@ -269,11 +269,13 @@ function inspectModelPolicy(workspace: string): InspectResult {
         permission: cfg.permission,
         session: "run.json host_session_id once the host returns one; first exec has no --session (no omm_<runId> fake). --no-session forces cold start",
         continue: "set when the user passed --continue, or after a real host session id is reused",
-        output_schema: "JSON object contents of schemas/planner-output.schema.json (mcode 0.2.1 --output-schema <json>, never a path)",
+        output_schema:
+          "omitted by default (mcode 0.2.1 --output-schema is host-internal exit 70). OMM_HOST_OUTPUT_SCHEMA=1 sends the JSON object from schemas/planner-output.schema.json. Yield is validated in TypeScript.",
         file: "verifier/review: latest test log and/or summary.md when present",
         prompt_prefix:
           "Role + goal + task packet + allowed files + acceptance + yield schema. Contract-only. Point at paths; do not paste file bodies.",
-        output_schema_workers: "JSON object contents of schemas/worker-yield.schema.json (schemaMode=strict)",
+        output_schema_workers:
+          "schemas/worker-yield.schema.json stays on disk. schemaMode=strict in TypeScript after exec. Host flag only when OMM_HOST_OUTPUT_SCHEMA=1.",
       },
       we_do_not_send: ["hooks", "custom plugin agents", "registered slash commands", "App UI payloads", "raw host JSONL into the next worker prompt"],
       role_permissions: Object.fromEntries(ROLES.map((role) => [role, ROLE_CONTRACTS[role].permission])),

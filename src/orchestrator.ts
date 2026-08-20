@@ -11,7 +11,7 @@ import {
 } from "./session.js";
 import { spawnSubagent, type SpawnResult } from "./subagent.js";
 import { interviewContext } from "./interview.js";
-import { looksLikePlannerGraph } from "./yield.js";
+import { coerceJsonValue, looksLikePlannerGraph } from "./yield.js";
 import {
   detectProjectCommands,
   findingsFromDeterministic,
@@ -65,9 +65,44 @@ function extractJsonBlock(text: string): unknown {
 function plannerGraphFromResult(result: ExecResult): unknown {
   const data = result.structuredOutput && typeof result.structuredOutput === "object" ? result.structuredOutput.data : undefined;
   if (looksLikePlannerGraph(data)) return data;
+  for (const event of result.events || []) {
+    const raw = event.raw;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const rec = raw as Record<string, unknown>;
+    const answer = coerceJsonValue(rec.answer);
+    if (looksLikePlannerGraph(answer)) return answer;
+  }
   const fromText = extractJsonBlock(result.text || "");
   if (looksLikePlannerGraph(fromText)) return fromText;
   return undefined;
+}
+
+function yieldNotOk(result: ExecResult): boolean {
+  const worker = "yield" in result ? (result as SpawnResult).yield : undefined;
+  return !worker || worker.status !== "ok";
+}
+
+function rejectPlanningYield(
+  store: RunStore,
+  runId: string,
+  phase: "DISCOVER" | "PLAN",
+  result: ExecResult,
+  opts: OrchestratorOptions,
+): RunRecord {
+  const worker = "yield" in result ? (result as SpawnResult).yield : undefined;
+  store.setPhase(runId, phase, "rejected");
+  store.appendEvent(runId, "run_rejected", {
+    reason: "failed_worker_yield",
+    phase,
+    status: worker?.status,
+    summary: worker?.summary,
+    exit_code: result.exitCode,
+  });
+  emit(opts, `${phase} failed: ${worker?.summary || "worker yield failed"} (exit ${result.exitCode})`);
+  store.evidenceReport(runId);
+  const finished = store.load(runId);
+  emitHostSessionHints(finished, (line) => emit(opts, line));
+  return finished;
 }
 
 function tasksFromPlanner(runId: string, goal: string, result: ExecResult): TaskGraph {
@@ -405,6 +440,9 @@ async function drive(
     store.writeTextEvidence(runId, "log", "discover.md", yieldSummary(result, "(no explorer yield)"), {
       notes: "explorer yield.summary",
     });
+    if (yieldNotOk(result)) {
+      return rejectPlanningYield(store, runId, "DISCOVER", result, opts);
+    }
     run = store.load(runId);
   }
 
@@ -427,6 +465,9 @@ async function drive(
       opts,
     );
     await persistExec(store, runId, "plan", result);
+    if (yieldNotOk(result)) {
+      return rejectPlanningYield(store, runId, "PLAN", result, opts);
+    }
     store.writePlan(runId, planMarkdown(run.goal, discoverBody, yieldSummary(result, "planner yield")));
     store.writeTasks(runId, tasksFromPlanner(runId, run.goal, result));
   }

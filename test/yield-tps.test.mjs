@@ -4,9 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { spawnSync } from "node:child_process";
-import { parseStreamLine, ProcessMcode, StubMcode, buildExecArgs } from "../dist/mcode.js";
+import { parseStreamLine, ProcessMcode, StubMcode, buildExecArgs, collectAssistantText, hostOutputSchemaEnabled } from "../dist/mcode.js";
 import { extractUsage } from "../dist/usage.js";
-import { extractStructuredYield, parseWorkerYield, validateWorkerYield, workerYieldSchemaPath } from "../dist/yield.js";
+import { extractStructuredOutput, extractStructuredYield, parseWorkerYield, validateWorkerYield, workerYieldSchemaPath } from "../dist/yield.js";
 import { formatTps, isStubHost, runDoctorTps, tpsFromExec, TPS_UNMEASURED } from "../dist/tps.js";
 import { spawnSubagent } from "../dist/subagent.js";
 import { tpsProbePrompt } from "../dist/prompts.js";
@@ -50,9 +50,21 @@ function schemaArg(argv) {
   return idx >= 0 ? argv[idx + 1] : undefined;
 }
 
-test("mcode exec --output-schema argv is a JSON object, not a .json path", async () => {
+async function withHostOutputSchema(enabled, fn) {
+  const prev = process.env.OMM_HOST_OUTPUT_SCHEMA;
+  if (enabled) process.env.OMM_HOST_OUTPUT_SCHEMA = "1";
+  else delete process.env.OMM_HOST_OUTPUT_SCHEMA;
+  try {
+    return await fn();
+  } finally {
+    if (prev === undefined) delete process.env.OMM_HOST_OUTPUT_SCHEMA;
+    else process.env.OMM_HOST_OUTPUT_SCHEMA = prev;
+  }
+}
+
+test("default exec argv omits --output-schema unless OMM_HOST_OUTPUT_SCHEMA=1", async () => {
   const schemaPath = workerYieldSchemaPath();
-  const argv = buildExecArgs({
+  const req = {
     cwd: tmp(),
     prompt: "Reply with exactly pong",
     role: "explorer",
@@ -60,25 +72,68 @@ test("mcode exec --output-schema argv is a JSON object, not a .json path", async
     outputSchema: schemaPath,
     maxSteps: 1,
     timeoutMs: 30_000,
+  };
+  await withHostOutputSchema(false, () => {
+    assert.equal(hostOutputSchemaEnabled(), false);
+    assert.equal(schemaArg(buildExecArgs(req)), undefined);
   });
-  const value = schemaArg(argv);
-  assert.ok(value, "expected --output-schema on argv");
-  assert.ok(value.startsWith("{"), `expected JSON object, got ${value.slice(0, 80)}`);
-  assert.doesNotMatch(value, /\.json$/);
-  assert.notEqual(value, schemaPath);
-  const parsed = JSON.parse(value);
-  assert.equal(parsed.type, "object");
-  assert.ok(parsed.properties?.status);
 
-  const missing = buildExecArgs({
-    cwd: tmp(),
-    prompt: "Reply with exactly pong",
-    role: "explorer",
-    permission: "off",
-    outputSchema: path.join(tmp(), "does-not-exist.schema.json"),
-    maxSteps: 1,
+  const prevMcode = process.env.OMM_MCODE;
+  const argvFile = path.join(tmp(), "argv-default.json");
+  process.env.OMM_MCODE = fakeMcode;
+  process.env.OMM_FAKE_ARGV = argvFile;
+  try {
+    await withHostOutputSchema(false, () =>
+      new ProcessMcode().exec({
+        cwd: tmp(),
+        prompt: "Reply with exactly pong",
+        role: "explorer",
+        permission: "off",
+        outputSchema: schemaPath,
+        maxSteps: 1,
+        timeoutMs: 8_000,
+      }),
+    );
+    const spawned = JSON.parse(readFileSync(argvFile, "utf8"));
+    assert.equal(schemaArg(spawned), undefined, "default ProcessMcode must not pass --output-schema");
+  } finally {
+    if (prevMcode) process.env.OMM_MCODE = prevMcode;
+    else delete process.env.OMM_MCODE;
+    delete process.env.OMM_FAKE_ARGV;
+  }
+});
+
+test("OMM_HOST_OUTPUT_SCHEMA=1 passes --output-schema as a JSON object, not a .json path", async () => {
+  const schemaPath = workerYieldSchemaPath();
+  await withHostOutputSchema(true, async () => {
+    const argv = buildExecArgs({
+      cwd: tmp(),
+      prompt: "Reply with exactly pong",
+      role: "explorer",
+      permission: "off",
+      outputSchema: schemaPath,
+      maxSteps: 1,
+      timeoutMs: 30_000,
+    });
+    const value = schemaArg(argv);
+    assert.ok(value, "expected --output-schema on argv when opt-in is set");
+    assert.ok(value.startsWith("{"), `expected JSON object, got ${value.slice(0, 80)}`);
+    assert.doesNotMatch(value, /\.json$/);
+    assert.notEqual(value, schemaPath);
+    const parsed = JSON.parse(value);
+    assert.equal(parsed.type, "object");
+    assert.ok(parsed.properties?.status);
+
+    const missing = buildExecArgs({
+      cwd: tmp(),
+      prompt: "Reply with exactly pong",
+      role: "explorer",
+      permission: "off",
+      outputSchema: path.join(tmp(), "does-not-exist.schema.json"),
+      maxSteps: 1,
+    });
+    assert.equal(schemaArg(missing), undefined);
   });
-  assert.equal(schemaArg(missing), undefined);
 
   const rejected = spawnSync(process.execPath, [fakeMcode, "exec", "--output-schema", schemaPath, "Reply with exactly pong"], {
     encoding: "utf8",
@@ -91,16 +146,17 @@ test("mcode exec --output-schema argv is a JSON object, not a .json path", async
   process.env.OMM_MCODE = fakeMcode;
   process.env.OMM_FAKE_ARGV = argvFile;
   try {
-    const result = await new ProcessMcode().exec({
-      cwd: tmp(),
-      prompt: "Reply with exactly pong",
-      role: "explorer",
-      permission: "off",
-      outputSchema: schemaPath,
-      maxSteps: 1,
-      timeoutMs: 8_000,
-    });
-    assert.equal(result.exitCode, 0, result.events.find((e) => e.type === "stderr")?.text || "");
+    await withHostOutputSchema(true, () =>
+      new ProcessMcode().exec({
+        cwd: tmp(),
+        prompt: "Reply with exactly pong",
+        role: "explorer",
+        permission: "off",
+        outputSchema: schemaPath,
+        maxSteps: 1,
+        timeoutMs: 8_000,
+      }),
+    );
     const spawned = JSON.parse(readFileSync(argvFile, "utf8"));
     const spawnedSchema = schemaArg(spawned);
     assert.ok(spawnedSchema, "ProcessMcode did not pass --output-schema");
@@ -110,6 +166,48 @@ test("mcode exec --output-schema argv is a JSON object, not a .json path", async
     if (prev) process.env.OMM_MCODE = prev;
     else delete process.env.OMM_MCODE;
     delete process.env.OMM_FAKE_ARGV;
+  }
+});
+
+test("parseWorkerYield accepts assistant JSON without structuredOutput", () => {
+  const data = { status: "ok", summary: "pong", findings: [], artifacts: [] };
+  const text = JSON.stringify(data);
+  const parsed = parseWorkerYield({
+    text,
+    events: [{ raw: { type: "assistant", text }, type: "assistant", text }],
+    exitCode: 0,
+    rawLines: [text],
+  });
+  assert.equal(parsed.ok, true, parsed.ok ? "" : parsed.error);
+  assert.equal(parsed.data.summary, "pong");
+});
+
+test("spawnSubagent does not set outputSchema by default", async () => {
+  const prev = process.env.OMM_HOST_OUTPUT_SCHEMA;
+  delete process.env.OMM_HOST_OUTPUT_SCHEMA;
+  let seen;
+  const data = { status: "ok", summary: "from assistant", findings: [], artifacts: [] };
+  const client = new StubMcode(async (req) => {
+    seen = req;
+    return { text: JSON.stringify(data), events: [], exitCode: 0, rawLines: [] };
+  });
+  try {
+    const result = await spawnSubagent(
+      {
+        role: "builder",
+        contract: { task_id: "T1", objective: "x", acceptance: [], constraints: [] },
+        permission: "ask",
+        cwd: tmp(),
+        prompt: "do the task",
+      },
+      { client },
+    );
+    assert.equal(seen.outputSchema, undefined);
+    assert.equal(result.yield.status, "ok");
+    assert.equal(result.yield.summary, "from assistant");
+  } finally {
+    if (prev === undefined) delete process.env.OMM_HOST_OUTPUT_SCHEMA;
+    else process.env.OMM_HOST_OUTPUT_SCHEMA = prev;
   }
 });
 
@@ -131,6 +229,37 @@ test("validateWorkerYield is strict", () => {
     prose: "nope",
   });
   assert.equal(extra.ok, false);
+});
+
+test("mcode 0.2.1 live yield fixture parses exec.result.answer", () => {
+  const fixture = readFileSync(path.resolve("test/fixtures/stream-json-mcode-0.2.1-yield.jsonl"), "utf8")
+    .split("\n")
+    .filter((line) => line.trim() && !line.includes("_comment"));
+  const events = fixture.map((line) => parseStreamLine(line));
+  const result = {
+    text: collectAssistantText(events),
+    events,
+    exitCode: 0,
+    rawLines: fixture,
+    structuredOutput: extractStructuredOutput(events),
+    usage: extractUsage(events, fixture),
+  };
+  const parsed = parseWorkerYield(result);
+  assert.equal(parsed.ok, true, parsed.ok ? "" : parsed.error);
+  assert.equal(parsed.data.status, "ok");
+  assert.equal(parsed.data.summary, "pong");
+  assert.deepEqual(parsed.data.findings, []);
+  assert.deepEqual(parsed.data.artifacts, []);
+  assert.equal(result.usage?.input_tokens, 470);
+  assert.equal(result.usage?.output_tokens, 47);
+  assert.equal(result.usage?.cache_read_tokens, 21497);
+  assert.equal(result.usage?.request_duration_ms, 4226);
+  assert.deepEqual(extractStructuredYield(result), {
+    status: "ok",
+    summary: "pong",
+    findings: [],
+    artifacts: [],
+  });
 });
 
 test("extractStructuredYield ignores raw JSONL and planner graphs", () => {

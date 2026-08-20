@@ -1,0 +1,5 @@
+{"_comment":"Captured mcode 0.2.1 MiniMax-M3 stream-json without --output-schema (live host, Node 24.19.0). exec.result.status=succeeded, answer is valid yield JSON. With --output-schema the same host returned exit 70 internal. Not a live CI run."}
+{"type":"message","timestamp":1000000000000,"message":{"role":"user"}}
+{"type":"delta","content":"{\"status\":\"ok\",\"summary\":\"pong\",\"findings\":[],\"artifacts\":[]}","timestamp":1000000004226,"chunkIndex":0,"finish":true}
+{"type":"message","message":{"role":"assistant","finishReason":"stop","usage":{"totalTokens":22014,"inputTokens":470,"outputTokens":47,"requestDurationMs":4226,"cacheReadTokens":21497}}}
+{"schemaVersion":1,"type":"exec.result","sessionId":"mvs_redacted","status":"succeeded","answer":"{\"status\":\"ok\",\"summary\":\"pong\",\"findings\":[],\"artifacts\":[]}","durationMs":19100,"model":{"providerId":"minimax","modelId":"MiniMax-M3","variant":"thinking"}}

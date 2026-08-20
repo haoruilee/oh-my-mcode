@@ -329,7 +329,7 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
     const run = await runPlan({ ...common, goal: rest });
     print(run, true);
     printSessionHints(run);
-    return 0;
+    return run.phase === "PLAN_REVIEW" && run.status === "active" ? 0 : 2;
   }
 
   if (command === "verify") {

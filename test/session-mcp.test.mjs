@@ -132,16 +132,45 @@ test("host omitting session id does not synthesize omm_ or send --continue", asy
   assert.ok(!store.loadEvents(run.run_id).some((event) => event.type === "host_session_bound"));
 });
 
-test("planner exec request includes outputSchema", async () => {
+test("planner exec request omits outputSchema unless OMM_HOST_OUTPUT_SCHEMA=1", async () => {
   const workspace = project();
   const requests = [];
-  await runMax({
-    workspace,
-    goal: "planner schema",
-    mcode: stubRecording(requests),
-    llmVerify: false,
-    noSession: true,
-  });
+  const prev = process.env.OMM_HOST_OUTPUT_SCHEMA;
+  delete process.env.OMM_HOST_OUTPUT_SCHEMA;
+  try {
+    await runMax({
+      workspace,
+      goal: "planner schema",
+      mcode: stubRecording(requests),
+      llmVerify: false,
+      noSession: true,
+    });
+  } finally {
+    if (prev === undefined) delete process.env.OMM_HOST_OUTPUT_SCHEMA;
+    else process.env.OMM_HOST_OUTPUT_SCHEMA = prev;
+  }
+  const planner = requests.find((req) => req.role === "planner");
+  assert.ok(planner, "planner exec missing");
+  assert.equal(planner.outputSchema, undefined);
+});
+
+test("planner exec request includes outputSchema when OMM_HOST_OUTPUT_SCHEMA=1", async () => {
+  const workspace = project();
+  const requests = [];
+  const prev = process.env.OMM_HOST_OUTPUT_SCHEMA;
+  process.env.OMM_HOST_OUTPUT_SCHEMA = "1";
+  try {
+    await runMax({
+      workspace,
+      goal: "planner schema opt-in",
+      mcode: stubRecording(requests),
+      llmVerify: false,
+      noSession: true,
+    });
+  } finally {
+    if (prev === undefined) delete process.env.OMM_HOST_OUTPUT_SCHEMA;
+    else process.env.OMM_HOST_OUTPUT_SCHEMA = prev;
+  }
   const planner = requests.find((req) => req.role === "planner");
   assert.ok(planner, "planner exec missing");
   assert.ok(planner.outputSchema, "planner outputSchema not set");

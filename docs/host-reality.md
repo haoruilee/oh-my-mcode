@@ -77,7 +77,9 @@ On **mcode 0.2.1** (`~/.minimax-code/bin/mcode`), `--output-schema <json>` is a 
 mcode exec failed: --output-schema requires a JSON object.
 ```
 
-We read the schema file and pass the serialized object. If the file is missing, we omit the flag.
+Live follow-up on 0.2.1 / Node 24.19.0: passing the JSON object still fails. Every worker `mcode exec` returned **exit 70** (`Sw.internal = 70` — "MCode encountered an internal error"). The same prompt **without** `--output-schema` exited 0 in 19.1s with `exec.result.status=succeeded` and a valid yield in `exec.result.answer`.
+
+Default argv therefore omits `--output-schema`. Schemas stay on disk. Yield is validated in TypeScript (`schemaMode: strict`) from `exec.result.answer`, assistant JSON, or `structuredOutput.data`. Set `OMM_HOST_OUTPUT_SCHEMA=1` only for experiments; `readOutputSchemaArg` still serializes the object (never a path).
 
 Max mode can be driven headless later by `mcode exec` plus a prompt that loads the `max` skill. That is not a second product CLI.
 

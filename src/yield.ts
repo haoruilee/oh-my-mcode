@@ -135,9 +135,35 @@ function extractJsonCandidate(text: string): unknown {
   }
 }
 
+/** Parse host `exec.result.answer` (object or JSON string) or assistant text. */
+export function coerceJsonValue(value: unknown): unknown {
+  if (value == null) return undefined;
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return extractJsonCandidate(trimmed);
+  }
+}
+
+function eventRecord(raw: unknown): Record<string, unknown> | undefined {
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : undefined;
+}
+
+function execResultAnswer(rec: Record<string, unknown>): unknown {
+  const type = typeof rec.type === "string" ? rec.type : "";
+  if (type === "exec.result" || type === "exec_result" || rec.answer !== undefined) {
+    return coerceJsonValue(rec.answer);
+  }
+  return undefined;
+}
+
 /**
- * Parent reads structuredOutput.data only. Never treat raw host JSONL as the yield.
- * Planner task graphs are not yields.
+ * Parent reads `exec.result.answer`, assistant JSON, or `structuredOutput.data`.
+ * Never dump raw host JSONL into the next prompt. Planner task graphs are not yields.
  */
 export function extractStructuredYield(result: ExecResult): unknown {
   const candidates: unknown[] = [];
@@ -145,13 +171,14 @@ export function extractStructuredYield(result: ExecResult): unknown {
     candidates.push(result.structuredOutput.data);
   }
   for (const event of result.events || []) {
-    const raw = event.raw;
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
-    const rec = raw as Record<string, unknown>;
+    const rec = eventRecord(event.raw);
+    if (!rec) continue;
     if (rec.structuredOutput && typeof rec.structuredOutput === "object") {
       const so = rec.structuredOutput as Record<string, unknown>;
       if ("data" in so) candidates.push(so.data);
     }
+    const answer = execResultAnswer(rec);
+    if (answer !== undefined) candidates.push(answer);
     if (rec.type === "result" && rec.data !== undefined) candidates.push(rec.data);
   }
   const fromText = extractJsonCandidate(result.text || "");
@@ -161,12 +188,13 @@ export function extractStructuredYield(result: ExecResult): unknown {
 
 export function extractStructuredOutput(events: { raw?: unknown }[]): { data?: unknown } | undefined {
   for (const event of events) {
-    const raw = event.raw;
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
-    const rec = raw as Record<string, unknown>;
+    const rec = eventRecord(event.raw);
+    if (!rec) continue;
     if (rec.structuredOutput && typeof rec.structuredOutput === "object") {
       return rec.structuredOutput as { data?: unknown };
     }
+    const answer = execResultAnswer(rec);
+    if (answer !== undefined) return { data: answer };
     if (rec.type === "result" && rec.data !== undefined) return { data: rec.data };
     if (rec.result && typeof rec.result === "object") {
       const inner = rec.result as Record<string, unknown>;
@@ -174,6 +202,8 @@ export function extractStructuredOutput(events: { raw?: unknown }[]): { data?: u
         return inner.structuredOutput as { data?: unknown };
       }
       if (inner.data !== undefined) return { data: inner.data };
+      const nestedAnswer = execResultAnswer(inner);
+      if (nestedAnswer !== undefined) return { data: nestedAnswer };
     }
   }
   return undefined;
@@ -182,7 +212,10 @@ export function extractStructuredOutput(events: { raw?: unknown }[]): { data?: u
 export function parseWorkerYield(result: ExecResult): { ok: true; data: WorkerYield } | { ok: false; error: string } {
   const candidate = extractStructuredYield(result);
   if (candidate === undefined) {
-    return { ok: false, error: "worker did not write structuredOutput.data (schemaMode=strict)" };
+    return {
+      ok: false,
+      error: "worker did not write a schema-valid yield (schemaMode=strict; expected exec.result.answer, assistant JSON, or structuredOutput.data)",
+    };
   }
   return validateWorkerYield(candidate);
 }
