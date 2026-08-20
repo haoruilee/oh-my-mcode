@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Geometric mark, readable at 32px. No extra deps. */
+/** Geometric M + gold chevron, readable at 32px. No extra deps. */
 import { deflateSync } from "node:zlib";
 import { createWriteStream } from "node:fs";
 import path from "node:path";
@@ -23,42 +23,57 @@ function fill(r, g, b) {
   }
 }
 
+function roundedRectMask(radius) {
+  const inside = (x, y) => {
+    const xr = x < radius ? radius - x : x >= SIZE - radius ? x - (SIZE - 1 - radius) : 0;
+    const yr = y < radius ? radius - y : y >= SIZE - radius ? y - (SIZE - 1 - radius) : 0;
+    if (xr && yr) return xr * xr + yr * yr <= radius * radius;
+    return true;
+  };
+  return inside;
+}
+
 function rect(x0, y0, x1, y1, r, g, b) {
   for (let y = y0; y <= y1; y += 1) {
     for (let x = x0; x <= x1; x += 1) setPx(x, y, r, g, b);
   }
 }
 
-function disc(cx, cy, rad, r, g, b) {
-  const r2 = rad * rad;
-  for (let y = cy - rad; y <= cy + rad; y += 1) {
-    for (let x = cx - rad; x <= cx + rad; x += 1) {
-      const dx = x - cx;
-      const dy = y - cy;
-      if (dx * dx + dy * dy <= r2) setPx(x, y, r, g, b);
+function pillar(x0, x1, y0, y1, slantIn, r, g, b) {
+  const mid = (x0 + x1) / 2;
+  for (let y = y0; y <= y1; y += 1) {
+    const t = (y - y0) / Math.max(1, y1 - y0);
+    const inset = Math.round((1 - t) * slantIn);
+    const left = x0 + (mid < SIZE / 2 ? inset : 0);
+    const right = x1 - (mid > SIZE / 2 ? inset : 0);
+    for (let x = left; x <= right; x += 1) setPx(x, y, r, g, b);
+  }
+}
+
+function chevron(cx, cy, halfW, halfH, thickness, r, g, b) {
+  for (let y = cy - halfH; y <= cy + halfH; y += 1) {
+    for (let x = cx - halfW; x <= cx + halfW; x += 1) {
+      const nx = (x - cx) / halfW;
+      const ny = (y - cy) / halfH;
+      const dist = Math.abs(ny - Math.abs(nx));
+      if (dist * halfH <= thickness) setPx(x, y, r, g, b);
     }
   }
 }
 
-fill(11, 18, 32);
-rect(18, 18, SIZE - 19, 32, 245, 185, 66);
-rect(18, SIZE - 33, SIZE - 19, SIZE - 19, 245, 185, 66);
-rect(18, 18, 32, SIZE - 19, 245, 185, 66);
-rect(SIZE - 33, 18, SIZE - 19, SIZE - 19, 245, 185, 66);
-disc(128, 120, 58, 245, 185, 66);
-disc(128, 120, 42, 11, 18, 32);
+const inRound = roundedRectMask(36);
+fill(6, 16, 18);
+for (let y = 0; y < SIZE; y += 1) {
+  for (let x = 0; x < SIZE; x += 1) {
+    if (!inRound(x, y)) setPx(x, y, 6, 16, 18, 0);
+  }
+}
 
-// Check mark
-for (let t = 0; t <= 1; t += 0.002) {
-  const x = Math.round(88 + t * 28);
-  const y = Math.round(120 + t * 28);
-  for (let k = -7; k <= 7; k += 1) setPx(x + k, y, 245, 185, 66);
-}
-for (let t = 0; t <= 1; t += 0.002) {
-  const x = Math.round(116 + t * 52);
-  const y = Math.round(148 - t * 52);
-  for (let k = -7; k <= 7; k += 1) setPx(x + k, y, 245, 185, 66);
-}
+// Outer pillars (inward-slanted tops) + center stem
+pillar(42, 86, 48, 208, 18, 245, 248, 250);
+pillar(170, 214, 48, 208, 18, 245, 248, 250);
+rect(118, 118, 138, 208, 245, 248, 250);
+chevron(128, 86, 46, 28, 8, 212, 160, 62);
 
 function crc32(buf) {
   let c = ~0;
