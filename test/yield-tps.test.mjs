@@ -4,7 +4,18 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { spawnSync } from "node:child_process";
-import { parseStreamLine, ProcessMcode, StubMcode, buildExecArgs, collectAssistantText, hostOutputSchemaEnabled } from "../dist/mcode.js";
+import {
+  parseStreamLine,
+  ProcessMcode,
+  StubMcode,
+  applyRoleDefaults,
+  buildExecArgs,
+  collectAssistantText,
+  formatHostTimeout,
+  HOST_TIMEOUT_ARG_RE,
+  ROLE_EXEC_DEFAULTS,
+  hostOutputSchemaEnabled,
+} from "../dist/mcode.js";
 import { extractUsage } from "../dist/usage.js";
 import { extractStructuredOutput, extractStructuredYield, parseWorkerYield, validateWorkerYield, workerYieldSchemaPath } from "../dist/yield.js";
 import { formatTps, isStubHost, runDoctorTps, tpsFromExec, TPS_UNMEASURED } from "../dist/tps.js";
@@ -50,6 +61,11 @@ function schemaArg(argv) {
   return idx >= 0 ? argv[idx + 1] : undefined;
 }
 
+function timeoutArg(argv) {
+  const idx = argv.indexOf("--timeout");
+  return idx >= 0 ? argv[idx + 1] : undefined;
+}
+
 async function withHostOutputSchema(enabled, fn) {
   const prev = process.env.OMM_HOST_OUTPUT_SCHEMA;
   if (enabled) process.env.OMM_HOST_OUTPUT_SCHEMA = "1";
@@ -61,6 +77,58 @@ async function withHostOutputSchema(enabled, fn) {
     else process.env.OMM_HOST_OUTPUT_SCHEMA = prev;
   }
 }
+
+test("buildExecArgs / fake-mcode pass --timeout with a host unit suffix, never a bare integer", async () => {
+  assert.equal(ROLE_EXEC_DEFAULTS.explorer.timeoutMs, 3 * 60 * 1000);
+  const prepared = applyRoleDefaults({
+    cwd: tmp(),
+    prompt: "Reply with exactly pong",
+    role: "explorer",
+    permission: "ask",
+  });
+  assert.equal(prepared.timeoutMs, 3 * 60 * 1000, "role defaults stay milliseconds internally");
+
+  const argv = buildExecArgs(prepared);
+  const value = timeoutArg(argv);
+  assert.ok(value, "expected --timeout on argv");
+  assert.match(value, HOST_TIMEOUT_ARG_RE);
+  assert.ok(value === "180s" || value === "180000ms", `3-minute explorer timeout must be 180s or 180000ms, got ${value}`);
+  assert.notEqual(value, "180");
+  assert.equal(formatHostTimeout(prepared.timeoutMs), "180s");
+
+  const rejected = spawnSync(process.execPath, [fakeMcode, "exec", "--timeout", "180", "Reply with exactly pong"], {
+    encoding: "utf8",
+  });
+  assert.equal(rejected.status, 6);
+  assert.match(rejected.stderr, /timeout|milliseconds/i);
+
+  const accepted = spawnSync(process.execPath, [fakeMcode, "exec", "--timeout", "180s", "Reply with exactly pong"], {
+    encoding: "utf8",
+  });
+  assert.equal(accepted.status, 0, accepted.stderr);
+
+  const prev = process.env.OMM_MCODE;
+  const argvFile = path.join(tmp(), "argv-timeout.json");
+  process.env.OMM_MCODE = fakeMcode;
+  process.env.OMM_FAKE_ARGV = argvFile;
+  try {
+    const result = await new ProcessMcode().exec(prepared);
+    assert.equal(result.exitCode, 0, "suffixed --timeout must not trip fake-mcode exit 6");
+    const spawned = JSON.parse(readFileSync(argvFile, "utf8"));
+    const spawnedTimeout = timeoutArg(spawned);
+    assert.ok(spawnedTimeout, "ProcessMcode did not pass --timeout");
+    assert.match(spawnedTimeout, /^\d+(ms|s|m|h)$/);
+    assert.ok(
+      spawnedTimeout === "180s" || spawnedTimeout === "180000ms",
+      `fake-mcode saw bare or unexpected --timeout ${spawnedTimeout}`,
+    );
+    assert.notEqual(spawnedTimeout, "180");
+  } finally {
+    if (prev) process.env.OMM_MCODE = prev;
+    else delete process.env.OMM_MCODE;
+    delete process.env.OMM_FAKE_ARGV;
+  }
+});
 
 test("default exec argv omits --output-schema unless OMM_HOST_OUTPUT_SCHEMA=1", async () => {
   const schemaPath = workerYieldSchemaPath();

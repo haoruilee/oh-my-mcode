@@ -81,6 +81,8 @@ Live follow-up on 0.2.1 / Node 24.19.0: passing the JSON object still fails. Eve
 
 Default argv therefore omits `--output-schema`. Schemas stay on disk. Yield is validated in TypeScript (`schemaMode: strict`) from `exec.result.answer`, assistant JSON, or `structuredOutput.data`. Set `OMM_HOST_OUTPUT_SCHEMA=1` only for experiments; `readOutputSchemaArg` still serializes the object (never a path).
 
+On the same 0.2.1 host, `--timeout` is parsed by `chm`: `/^(\d+)(ms|s|m|h)?$/i`. A bare integer is **milliseconds**, not seconds. After PR #9, `oh-my-mcode plan` bound a real session (`mvs_…`, `host_session_source: host`) then discover failed with **exit 6** (`Sw.timeout = 6`) because we sent `--timeout 180` for a 3-minute explorer default (180ms). Live first_token_ms was ~6030, then timeout. `doctor --smoke` omits `--timeout` and succeeded in 18s; `mcode exec --timeout 45s` succeeded. Worker argv therefore sends a unit suffix (`180s`), never a bare integer. Role defaults stay milliseconds internally.
+
 Max mode can be driven headless later by `mcode exec` plus a prompt that loads the `max` skill. That is not a second product CLI.
 
 ```bash

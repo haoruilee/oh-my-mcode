@@ -49,7 +49,7 @@ A worker must finish with schema-validated JSON (`schemas/worker-yield.schema.js
 { "status": "ok|blocked|failed", "summary": "...", "findings": [], "artifacts": [], "file_hashes": {} }
 ```
 
-The parent validates yield in TypeScript (`schemaMode: strict`) from `exec.result.answer`, assistant JSON, or `structuredOutput.data` if the host ever sends it. It does not dump raw host JSONL into the next prompt. Invalid yield: one reminder, then fail and surface as a finding. Default `mcode exec` omits `--output-schema` (live 0.2.1 exits 70 on that path). `OMM_HOST_OUTPUT_SCHEMA=1` is opt-in only.
+The parent validates yield in TypeScript (`schemaMode: strict`) from `exec.result.answer`, assistant JSON, or `structuredOutput.data` if the host ever sends it. It does not dump raw host JSONL into the next prompt. Invalid yield: one reminder, then fail and surface as a finding. Default `mcode exec` omits `--output-schema` (live 0.2.1 exits 70 on that path). `OMM_HOST_OUTPUT_SCHEMA=1` is opt-in only. Host `--timeout` always includes a unit suffix (`180s`); a bare integer is milliseconds on 0.2.1 and times out (exit 6).
 
 ## Team packet
 

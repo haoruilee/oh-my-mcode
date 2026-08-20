@@ -134,6 +134,19 @@ export function readOutputSchemaArg(value?: string): string | undefined {
   }
 }
 
+/**
+ * Host `--timeout` parser (`chm` in mcode 0.2.1 `@minimax-ai/code` cli.js):
+ * `/^(\d+)(ms|s|m|h)?$/i` — missing unit → multiplier 1 → milliseconds.
+ * A bare integer like `180` is 180ms, not 180s. That is why live `plan` bound
+ * a real host session (`mvs_…`) then discover failed with exit 6 (`Sw.timeout`).
+ * Role defaults stay milliseconds internally; argv must carry a unit suffix.
+ */
+export const HOST_TIMEOUT_ARG_RE = /^\d+(ms|s|m|h)$/i;
+
+export function formatHostTimeout(timeoutMs: number): string {
+  return `${Math.max(1, Math.ceil(timeoutMs / 1000))}s`;
+}
+
 export function buildExecArgs(req: ExecRequest, prefixArgs: string[] = []): string[] {
   const args = [
     ...prefixArgs,
@@ -151,7 +164,7 @@ export function buildExecArgs(req: ExecRequest, prefixArgs: string[] = []): stri
   if (schema) args.push("--output-schema", schema);
   for (const file of req.files || []) args.push("--file", file);
   if (req.maxSteps && req.maxSteps > 0) args.push("--max-steps", String(req.maxSteps));
-  if (req.timeoutMs && req.timeoutMs > 0) args.push("--timeout", String(Math.max(1, Math.ceil(req.timeoutMs / 1000))));
+  if (req.timeoutMs && req.timeoutMs > 0) args.push("--timeout", formatHostTimeout(req.timeoutMs));
   args.push(req.prompt);
   return args;
 }
