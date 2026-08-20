@@ -222,6 +222,7 @@ test("cli --help lists the full command surface", async () => {
     "team",
     "doctor",
     "install",
+    "interview",
   ]) {
     assert.match(help, new RegExp(cmd));
   }

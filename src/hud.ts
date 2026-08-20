@@ -1,5 +1,6 @@
 import type { Phase, Role, RunEvent, RunRecord, TaskGraph, TaskItem } from "./types.js";
 import { RunStore } from "./store.js";
+import { formatUsage } from "./usage.js";
 
 const PHASE_ORDER: Phase[] = [
   "INTAKE",
@@ -85,7 +86,7 @@ export function renderHud(model: HudModel): string {
     }
   }
   lines.push(
-    `Evidence: ${evidenceCount} files  Repairs: ${run.repair_count || 0}/${maxRepairs}  Cache/cost: n/a if unknown`,
+    `Evidence: ${evidenceCount} files  Repairs: ${run.repair_count || 0}/${maxRepairs}  Cache/cost: ${formatUsage(run.usage)}`,
   );
   return lines.join("\n");
 }

@@ -18,12 +18,12 @@ function clip(text: string, max = 1800): string {
   return `${text.slice(0, max)}\n…(truncated)`;
 }
 
-export function explorerPrompt(goal: string): string {
+export function explorerPrompt(goal: string, interview = ""): string {
   return `Role: Explorer (read-only).
 ${clip(roleFile("explorer"))}
 
 Goal: ${goal}
-
+${interview ? `\nInterview intake:\n${clip(interview, 800)}\n` : ""}
 Search the workspace. Do not edit files. Return:
 - relevant paths
 - existing test/build commands
@@ -31,12 +31,12 @@ Search the workspace. Do not edit files. Return:
 Keep it under 40 lines.`;
 }
 
-export function plannerPrompt(goal: string, discovery: string): string {
+export function plannerPrompt(goal: string, discovery: string, interview = ""): string {
   return `Role: Planner (write plan artifacts only; do not edit product code).
 ${clip(roleFile("planner"))}
 
 Goal: ${goal}
-
+${interview ? `\nInterview intake (honor acceptance / out of scope):\n${clip(interview, 800)}\n` : ""}
 Discovery notes:
 ${clip(discovery, 1200)}
 
@@ -48,8 +48,8 @@ Write:
 Acceptance must be runnable commands. One builder task per change. Do not implement.`;
 }
 
-export function plannerTeamPrompt(goal: string, discovery: string): string {
-  return `${plannerPrompt(goal, discovery)}
+export function plannerTeamPrompt(goal: string, discovery: string, interview = ""): string {
+  return `${plannerPrompt(goal, discovery, interview)}
 
 Team mode: emit a DAG with roles explorer/planner/builder/verifier/release.
 Independent builder tasks (no shared files, empty depends_on) MAY run in parallel.

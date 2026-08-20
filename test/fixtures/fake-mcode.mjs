@@ -34,6 +34,12 @@ if (/Role: Explorer/i.test(prompt)) {
   });
 } else if (/Role: Verifier/i.test(prompt) || /READ-ONLY/i.test(prompt)) {
   emit({ type: "assistant", text: '```json\n{"blockers":[],"notes":["deterministic evidence is sufficient"]}\n```' });
+} else if (/single word pong/i.test(prompt) || /\bpong\b/i.test(prompt)) {
+  if (args.includes("json") && !args.includes("stream-json")) {
+    process.stdout.write(`${JSON.stringify({ type: "result", text: "pong" })}\n`);
+  } else {
+    emit({ type: "assistant", text: "pong" });
+  }
 } else if (/Role: Builder/i.test(prompt)) {
   if (failOnce && marker && !process.env.OMM_FAKE_BUILT) {
     // Builder "works" but tests may still fail independently.

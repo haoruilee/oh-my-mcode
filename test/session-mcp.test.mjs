@@ -188,6 +188,7 @@ test("MCP stdio initialize + tools/list + omm_run_create + omm_status", async ()
       "omm_status",
       "omm_verify",
       "omm_inspect",
+      "omm_interview",
     ]) {
       assert.ok(names.includes(name), `missing MCP tool ${name}`);
     }

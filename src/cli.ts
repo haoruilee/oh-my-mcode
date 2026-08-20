@@ -3,17 +3,17 @@ import { CliError, McodeMissingError, log } from "./util.js";
 import { RunStore } from "./store.js";
 import { runDoctor, formatDoctor } from "./doctor.js";
 import { installPlugin } from "./install.js";
-import { runMax, runPlan, runResume, runTeam, runVerifyOnly } from "./orchestrator.js";
+import { runMax, runPlan, runResume, runTeam } from "./orchestrator.js";
 import { PERMISSIONS, type Permission } from "./types.js";
 import { applyFlagOverrides, loadConfig } from "./config.js";
 import { emitHostSessionHints } from "./session.js";
 import type { RunRecord } from "./types.js";
-import { attachHud, renderHud, loadHud, watchHud } from "./hud.js";
+import { watchHud } from "./hud.js";
 import { formatInspect, INSPECT_TOPICS, runInspect } from "./inspect.js";
 import { runReview } from "./review.js";
 import { formatShip, runShip } from "./ship.js";
 import { runResearch } from "./research.js";
-import { cleanupRunWorktrees } from "./worktree.js";
+import { createHarness } from "./harness.js";
 
 const VERSION = "0.1.0";
 
@@ -35,6 +35,7 @@ Commands:
   cancel [run_id]    Mark cancelled and persist the event
   inspect <topic>    tools|skills|agents|context|runs|model-policy
   team <task>        Flat team mode (explicit; sequential max is default)
+  interview <goal>   Capture goal/constraints/acceptance; stop at PLAN_REVIEW
   doctor             Host + package health
   install            Copy plugin into ~/.minimax/plugins/oh-my-mcode
 
@@ -56,6 +57,11 @@ Options:
   --watch                attach: tail events / refresh HUD
   --commit               ship: local commit if git is clean enough; push only then
   --package-only         doctor: skip mcode-on-PATH (CI)
+  --smoke                doctor: one tiny mcode exec (pong)
+  --yes                  install: non-interactive
+  --answers FILE         interview: skip prompts, load JSON
+  --constraint TEXT      interview: repeatable; non-TTY without --answers
+  --interview            max: interview first, then the full loop
   --session ID           Attach this run to an existing host mcode session
   --no-session           Force cold-start exec (tests / escape hatch)
   --continue             First exec uses host --continue (latest-in-cwd)
@@ -77,7 +83,9 @@ Examples:
   oh-my-mcode review
   oh-my-mcode ship
   oh-my-mcode doctor
-  oh-my-mcode install
+  oh-my-mcode doctor --smoke
+  oh-my-mcode interview "fix auth"
+  npx oh-my-mcode install --yes
 `;
 
 interface Flags {
@@ -97,6 +105,11 @@ interface Flags {
   watch?: boolean;
   commit?: boolean;
   "package-only"?: boolean;
+  smoke?: boolean;
+  yes?: boolean;
+  answers?: string;
+  constraint?: string[];
+  interview?: boolean;
   json?: boolean;
   help?: boolean;
   version?: boolean;
@@ -118,6 +131,9 @@ const BOOL_FLAGS = new Set([
   "commit",
   "no-session",
   "continue",
+  "smoke",
+  "yes",
+  "interview",
 ]);
 
 function parseArgv(argv: string[]): Flags {
@@ -150,6 +166,16 @@ function parseArgv(argv: string[]): Flags {
     if (token === "--permission" || token === "--max-repairs" || token === "--concurrency" || token === "--session") {
       const key = token.slice(2) as "permission" | "max-repairs" | "concurrency" | "session";
       flags[key] = argv[++i];
+      continue;
+    }
+    if (token === "--answers") {
+      flags.answers = argv[++i];
+      continue;
+    }
+    if (token === "--constraint") {
+      const value = argv[++i];
+      if (!value) throw new CliError("--constraint requires a value");
+      flags.constraint = [...(flags.constraint || []), value];
       continue;
     }
     if (token.startsWith("-")) {
@@ -228,22 +254,48 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
   };
 
   if (command === "doctor") {
-    const report = runDoctor({ packageOnly: Boolean(flags["package-only"]) });
+    const report = runDoctor({ packageOnly: Boolean(flags["package-only"]), smoke: Boolean(flags.smoke) });
     if (flags.json) print(report, true);
     else process.stdout.write(`${formatDoctor(report)}\n`);
     return report.ok ? 0 : 1;
   }
 
   if (command === "install") {
-    const result = installPlugin();
+    const result = installPlugin({ yes: Boolean(flags.yes) });
     print(result, Boolean(flags.json));
+    return 0;
+  }
+
+  const harness = createHarness(workspace);
+
+  if (command === "interview") {
+    if (!rest && !flags["run-id"]) throw new CliError('usage: oh-my-mcode interview "<goal>"');
+    const result = await harness.submit({
+      op: "interview",
+      goal: rest,
+      runId: flags["run-id"],
+      answersPath: flags.answers,
+      constraints: flags.constraint,
+    });
+    print(flags.json ? result : result.run, true);
     return 0;
   }
 
   if (command === "max") {
     if (!rest && !flags["run-id"]) throw new CliError('usage: oh-my-mcode max "<goal>"');
     try {
-      const run = await runMax({ ...common, goal: rest });
+      let runId = flags["run-id"];
+      if (flags.interview) {
+        const interviewed = await harness.submit({
+          op: "interview",
+          goal: rest,
+          runId,
+          answersPath: flags.answers,
+          constraints: flags.constraint,
+        });
+        runId = interviewed.run?.run_id;
+      }
+      const run = await runMax({ ...common, goal: rest, runId, resumeFrom: flags.interview ? "PLAN_REVIEW" : undefined, interview: Boolean(flags.interview) });
       print(run, true);
       printSessionHints(run);
       return run.status === "accepted" ? 0 : 2;
@@ -268,9 +320,17 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
   }
 
   if (command === "verify") {
-    const run = await runVerifyOnly({ ...common, runId: rest || flags["run-id"] });
-    print(run, true);
-    return run.status === "accepted" ? 0 : 2;
+    const result = await harness.submit({
+      op: "verify",
+      runId: rest || flags["run-id"],
+      permission: common.permission,
+      llmVerify: common.llmVerify,
+      session: common.session,
+      noSession: common.noSession,
+      continue: common.continue,
+    });
+    print(result.run, true);
+    return result.run?.status === "accepted" ? 0 : 2;
   }
 
   if (command === "resume") {
@@ -305,17 +365,14 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
       await watchHud(store, runId, { maxRepairs: cfg.maxRepairs });
       return 0;
     }
-    const text = command === "attach" ? attachHud(store, runId, cfg.maxRepairs) : renderHud(loadHud(store, runId, cfg.maxRepairs));
-    print(flags.json ? { hud: text, run: store.load(runId) } : text, Boolean(flags.json));
+    const result = await harness.submit({ op: "status", runId, attach: command === "attach" });
+    print(flags.json ? { hud: result.hud, run: result.run } : result.hud, Boolean(flags.json));
     return 0;
   }
 
   if (command === "cancel") {
-    const store = new RunStore(workspace);
-    const runId = store.resolveId(rest || flags["run-id"]);
-    const run = store.cancel(runId);
-    cleanupRunWorktrees(workspace, runId);
-    print(run, Boolean(flags.json));
+    const result = await harness.submit({ op: "cancel", runId: rest || flags["run-id"] });
+    print(result.run, Boolean(flags.json));
     return 0;
   }
 

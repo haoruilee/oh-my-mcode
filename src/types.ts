@@ -36,6 +36,8 @@ export const EVENT_TYPES = [
   "hud_attached",
   "run_cancelled",
   "host_session_bound",
+  "interview_completed",
+  "subagent_spawned",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -70,6 +72,14 @@ export interface RunRecord {
   host_session_id?: string;
   host_continue?: boolean;
   host_session_source?: "host" | "synthesized" | "user";
+  usage?: UsageTotals;
+}
+
+export interface UsageTotals {
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  cost_usd?: number;
 }
 
 export interface RunEvent {

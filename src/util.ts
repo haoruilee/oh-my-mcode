@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { constants, mkdirSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { constants, existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -8,8 +8,21 @@ export function nowIso(): string {
   return new Date().toISOString();
 }
 
+/**
+ * Package root for npx / global / checkout. Walks up from this module
+ * (`import.meta.url`), never `process.cwd()`. Tests may set OMM_PACKAGE_ROOT.
+ */
 export function packageRoot(): string {
   if (process.env.OMM_PACKAGE_ROOT) return path.resolve(process.env.OMM_PACKAGE_ROOT);
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 8; i += 1) {
+    if (existsSync(path.join(dir, "plugin.json")) && existsSync(path.join(dir, ".minimax-plugin/plugin.json"))) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 }
 
@@ -92,6 +105,18 @@ export async function promptYesNo(question: string): Promise<boolean> {
   });
   rl.close();
   return !/^(n|no)$/i.test(answer.trim());
+}
+
+export async function promptLine(question: string): Promise<string> {
+  if (!process.stdin.isTTY) {
+    throw new CliError("promptLine requires a TTY; pass --answers or --constraint");
+  }
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const answer = await new Promise<string>((resolve) => {
+    rl.question(`${question} `, resolve);
+  });
+  rl.close();
+  return answer.trim();
 }
 
 export function log(line: string): void {

@@ -8,17 +8,18 @@ This maps the original product plan to what this repo ships. Host-honesty: publi
 
 | Plan | What shipped |
 | --- | --- |
-| §7 Command surface | CLI: `max` `plan` `verify` `resume` `review` `ship` `research` `attach` `status` `cancel` `inspect` `team` `doctor` `install`. Hero remains `oh-my-mcode max` / `omm`. Matching Skills for max/plan/verify/resume/doctor/review/ship/research/team |
-| Persistent run + EventStore | `.minimax/runs/<id>/` with atomic writes. Extra events: `review_completed`, `ship_prepared`, `research_completed`, `task_cancelled`, `team_spawned`, `worktree_created`, `hud_attached`, `run_cancelled`, `host_session_bound` |
-| Session continuity + MCP | One host session per run; structured `mcode exec` (`--output-schema`, `--file`); portable MCP tools `omm_*` |
+| §7 Command surface | CLI: `max` `plan` `verify` `resume` `review` `ship` `research` `attach` `status` `cancel` `inspect` `team` `interview` `doctor` `install`. Hero remains `oh-my-mcode max` / `omm`. Matching Skills including `interview`. `npx oh-my-mcode install` is the one-liner |
+| Persistent run + EventStore | `.minimax/runs/<id>/` with atomic writes. Extra events include `interview_completed`, `subagent_spawned`, `host_session_bound` |
+| Session continuity + MCP | One host session per run; CLI + MCP go through `src/harness.ts` `submit`; MCP JSON-RPC is the app-server-shaped surface |
 | HUD / App-CLI unification | `attach` / `status` render the same folder TUI skills write. No host daemon API |
 | Phase C flat team | `team` / `max --team`: TypeScript scheduler, bounded concurrency (default 2), optional git worktrees. No grandchild agents. Sequential `max` stays default |
 | Ralph / todo continuation | `tasks.json` is source of truth. `resume` never invents a goal. `--ralph` continues until Accepted with the existing repair bound. Repeated failure signatures escalate in `summary.md` |
 | §8.6 Tool repair | `src/tool-repair.ts`: classify spawn/parse; at most one retry; then block + `repair_requested` |
 | Config | `<workspace>/.minimax/oh-my-mcode.json` and `~/.minimax/oh-my-mcode.json`; flags override |
-| §9 Doctor + inspect | Packaged skills present + frontmatter; bins resolve; store writable; mcode version; plugin drop-in; silent skill drop is an error |
+| §9 Doctor + inspect | Packaged skills present + frontmatter; bins resolve; store writable; mcode version; plugin drop-in; `doctor --smoke` pong exec; silent skill drop is an error |
 | §13 Evals | `evals/` harness + 3 fixtures + checked-in baseline + `npm run eval`. **No production ΔY claim** |
-| Workflows | `workflows/*.yaml` parsed by `src/workflows.ts` (max/plan/verify/review/ship/research/team) |
+| Workflows | `workflows/*.yaml` parsed by `src/workflows.ts` (max/plan/verify/review/ship/research/team/interview) |
+| Harness / subagent | `src/harness.ts` + `src/subagent.ts`: thread=run, EQ=`events.jsonl`, no grandchild spawn. See `docs/harness.md` |
 | Host coexistence | We do not claim `/plan` `/goal` `/resume` `/team`. Natural-language Skills only |
 
 ## Still needs a MiniMax Extension API

@@ -39,7 +39,9 @@
         "worktree_created",
         "hud_attached",
         "run_cancelled",
-        "host_session_bound"
+        "host_session_bound",
+        "interview_completed",
+        "subagent_spawned"
       ]
     },
     "run_id": {

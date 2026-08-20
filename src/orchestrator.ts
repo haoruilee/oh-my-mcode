@@ -6,10 +6,11 @@ import { ProcessMcode, resolveMcodeInvocation, type ExecRequest, type ExecResult
 import {
   applyRequestedSession,
   emitHostSessionHints,
-  execTracked,
   judgeEvidenceFiles,
   type SessionOpts,
 } from "./session.js";
+import { spawnSubagent } from "./subagent.js";
+import { interviewContext } from "./interview.js";
 import {
   detectProjectCommands,
   findingsFromDeterministic,
@@ -41,6 +42,8 @@ export interface OrchestratorOptions {
   session?: string;
   noSession?: boolean;
   continue?: boolean;
+  resumeFrom?: Phase;
+  interview?: boolean;
 }
 
 function emit(opts: OrchestratorOptions, line: string): void {
@@ -180,7 +183,26 @@ async function execRole(
   opts: OrchestratorOptions,
   extra: SessionOpts = {},
 ): Promise<ExecResult> {
-  return execTracked(client, store, runId, req, sessionOptsOf(opts, extra));
+  return spawnSubagent(
+    {
+      role: req.role,
+      contract: {
+        task_id: req.role,
+        objective: req.prompt.slice(0, 240),
+        acceptance: [],
+        constraints: ["One role exec", "Do not mark Accepted", "Do not spawn sub-agents"],
+      },
+      session: req.session,
+      permission: req.permission,
+      cwd: req.cwd,
+      prompt: req.prompt,
+      files: req.files,
+      timeoutMs: req.timeoutMs,
+      maxSteps: req.maxSteps,
+      outputSchema: req.outputSchema,
+    },
+    { client, store, runId, sessionOpts: sessionOptsOf(opts, extra) },
+  );
 }
 
 function discoveryText(store: RunStore, runId: string): string {
@@ -217,7 +239,7 @@ export async function runMax(opts: OrchestratorOptions): Promise<RunRecord> {
   applyRequestedSession(store, run.run_id, opts);
   emit(opts, `run ${run.run_id} at ${store.dir(run.run_id)}`);
   const client = await requireClient(opts, store, run.run_id);
-  return drive(store, client, run.run_id, opts, { stopAfter: "ACCEPT" });
+  return drive(store, client, run.run_id, opts, { stopAfter: "ACCEPT", resumeFrom: opts.resumeFrom });
 }
 
 export async function runTeam(opts: OrchestratorOptions): Promise<RunRecord> {
@@ -297,18 +319,15 @@ async function executeOneBuilder(
       store.appendEvent(runId, "worktree_created", { path: worktree.path, branch: worktree.branch }, { task_id: task.id });
     }
   }
-  const result = await execRole(
-    client,
-    store,
-    runId,
+  const result = await spawnSubagent(
     {
+      role: "builder",
+      contract: contractFor(task, tasks),
+      permission,
       cwd,
       prompt,
-      role: "builder",
-      permission,
     },
-    opts,
-    { isolated: Boolean(worktree?.created) },
+    { client, store, runId, sessionOpts: sessionOptsOf(opts, { isolated: Boolean(worktree?.created) }) },
   );
   await persistExec(store, runId, `execute-${task.id}`, result);
   if (worktree?.created) {
@@ -343,7 +362,7 @@ async function drive(
       runId,
       {
         cwd: opts.workspace,
-        prompt: explorerPrompt(run.goal),
+        prompt: explorerPrompt(run.goal, interviewContext(store, runId)),
         role: "explorer",
         permission: permission === "full" ? "ask" : permission,
       },
@@ -366,7 +385,9 @@ async function drive(
       runId,
       {
         cwd: opts.workspace,
-        prompt: opts.team ? plannerTeamPrompt(run.goal, discoverBody) : plannerPrompt(run.goal, discoverBody),
+        prompt: opts.team
+          ? plannerTeamPrompt(run.goal, discoverBody, interviewContext(store, runId))
+          : plannerPrompt(run.goal, discoverBody, interviewContext(store, runId)),
         role: "planner",
         permission: "ask",
       },

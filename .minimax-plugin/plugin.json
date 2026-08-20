@@ -12,7 +12,8 @@
     "Make a plan only for migrating this module to Postgres",
     "Re-verify the current run against its acceptance criteria",
     "Review this run without accepting it",
-    "Research how auth tokens are rotated — do not implement"
+    "Research how auth tokens are rotated — do not implement",
+    "Interview this goal before we build: fix auth and prove tests pass"
   ],
   "apps": [],
   "mcpServers": ["mcp.json"],
@@ -25,6 +26,7 @@
     "skills/review/SKILL.md",
     "skills/ship/SKILL.md",
     "skills/research/SKILL.md",
-    "skills/team/SKILL.md"
+    "skills/team/SKILL.md",
+    "skills/interview/SKILL.md"
   ]
 }

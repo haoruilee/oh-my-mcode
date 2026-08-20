@@ -5,6 +5,7 @@ import { applyRoleDefaults } from "./mcode.js";
 import type { RunRecord } from "./types.js";
 import type { RunStore } from "./store.js";
 import { execWithRepair } from "./tool-repair.js";
+import { extractUsage, mergeUsage } from "./usage.js";
 
 export interface SessionOpts {
   noSession?: boolean;
@@ -206,6 +207,11 @@ export async function execTracked(
   };
   const result = await execWithRepair(client, prepared, { store, runId });
   rememberHostSession(store, runId, result, prepared, opts);
+  const usage = extractUsage(result.events, result.rawLines);
+  if (usage) {
+    const current = store.load(runId);
+    store.patchRun(runId, { usage: mergeUsage(current.usage, usage) });
+  }
   return result;
 }
 

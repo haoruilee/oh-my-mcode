@@ -5,6 +5,7 @@ import path from "node:path";
 import { packageRoot, which } from "./util.js";
 import { pluginInstallDir } from "./install.js";
 import { RunStore } from "./store.js";
+import { mcodeExists, resolveMcodeInvocation } from "./mcode.js";
 
 export interface DoctorCheck {
   id: string;
@@ -44,7 +45,57 @@ function cmpSemver(a: string, b: string): number {
   return 0;
 }
 
-export function runDoctor(opts: { packageOnly?: boolean } = {}): DoctorReport {
+export interface SmokeResult {
+  skipped: boolean;
+  required: boolean;
+  ok: boolean;
+  latencyMs?: number;
+  exitCode?: number | null;
+  output?: string;
+  reason?: string;
+}
+
+export function runDoctorSmoke(): SmokeResult {
+  if (!mcodeExists()) {
+    return { skipped: true, required: true, ok: false, reason: "mcode is not on PATH" };
+  }
+  const invocation = resolveMcodeInvocation();
+  const args = [
+    ...invocation.prefixArgs,
+    "exec",
+    "--max-steps",
+    "1",
+    "--output-format",
+    "json",
+    "reply with the single word pong",
+  ];
+  const started = Date.now();
+  try {
+    const output = execFileSync(invocation.command, args, {
+      encoding: "utf8",
+      timeout: 30_000,
+      env: process.env,
+    });
+    const latencyMs = Date.now() - started;
+    const text = String(output || "");
+    const ok = /pong/i.test(text);
+    return { skipped: false, required: true, ok, latencyMs, exitCode: 0, output: text.slice(0, 400) };
+  } catch (error) {
+    const latencyMs = Date.now() - started;
+    const err = error as { status?: number; stdout?: string; stderr?: string; message?: string };
+    const output = `${err.stdout || ""}${err.stderr || err.message || ""}`;
+    return {
+      skipped: false,
+      required: true,
+      ok: /pong/i.test(output),
+      latencyMs,
+      exitCode: err.status ?? 1,
+      output: output.slice(0, 400),
+    };
+  }
+}
+
+export function runDoctor(opts: { packageOnly?: boolean; smoke?: boolean } = {}): DoctorReport {
   const root = packageRoot();
   const checks: DoctorCheck[] = [];
   const add = (check: DoctorCheck) => checks.push(check);
@@ -81,6 +132,7 @@ export function runDoctor(opts: { packageOnly?: boolean } = {}): DoctorReport {
     "skills/ship/SKILL.md",
     "skills/research/SKILL.md",
     "skills/team/SKILL.md",
+    "skills/interview/SKILL.md",
   ];
   const missingExpected = expected.filter((rel) => !skills.includes(rel) || !existsSync(path.join(root, rel)));
   add({
@@ -121,6 +173,9 @@ export function runDoctor(opts: { packageOnly?: boolean } = {}): DoctorReport {
       "worktree.ts",
       "tool-repair.ts",
       "session.ts",
+      "harness.ts",
+      "subagent.ts",
+      "interview.ts",
     ].every((name) => existsSync(path.join(root, "src", name))),
     level: "error",
     message: "TypeScript orchestrator sources present",
@@ -215,8 +270,45 @@ export function runDoctor(opts: { packageOnly?: boolean } = {}): DoctorReport {
     });
   }
 
-  const packageOk = checks.filter((c) => c.level === "error" && !c.id.startsWith("mcode") && c.id !== "plugin-install").every((c) => c.ok);
-  const hostOk = checks.filter((c) => c.id === "mcode").every((c) => c.ok);
+  if (opts.smoke) {
+    if (opts.packageOnly) {
+      add({
+        id: "smoke",
+        ok: true,
+        level: "note",
+        message: "smoke skipped (--package-only)",
+      });
+    } else if (!mcodeExists()) {
+      add({
+        id: "smoke",
+        ok: false,
+        level: "error",
+        message: "mcode is not on PATH; --smoke requires a host exec (set OMM_MCODE in CI)",
+      });
+    } else {
+      const smoke = runDoctorSmoke();
+      add({
+        id: "smoke",
+        ok: smoke.ok,
+        level: smoke.ok ? "note" : "error",
+        message: smoke.ok
+          ? `smoke pong ok exit=${smoke.exitCode} latency=${smoke.latencyMs}ms`
+          : `smoke failed exit=${smoke.exitCode} latency=${smoke.latencyMs}ms`,
+      });
+    }
+  } else if (!opts.packageOnly && !mcodeExists()) {
+    add({
+      id: "smoke",
+      ok: true,
+      level: "warn",
+      message: "mcode missing; smoke skipped (pass --smoke to require a pong exec)",
+    });
+  }
+
+  const packageOk = checks
+    .filter((c) => c.level === "error" && !c.id.startsWith("mcode") && c.id !== "plugin-install" && c.id !== "smoke")
+    .every((c) => c.ok);
+  const hostOk = checks.filter((c) => c.id === "mcode" || (c.id === "smoke" && !c.ok)).every((c) => c.ok);
   const ok = opts.packageOnly ? packageOk : packageOk && hostOk;
   return { ok, packageOk, hostOk, checks };
 }

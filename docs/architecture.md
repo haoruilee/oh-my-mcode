@@ -10,8 +10,8 @@ Not more agents, more skills, or longer memory. Verified completion with evidenc
 
 | Surface | Entry | Who drives the loop |
 | --- | --- | --- |
-| TUI | "max mode: …" / "make a verified plan" / "re-verify this run" | Skills `max` / `plan` / `verify` / `resume` / `review` / `ship` / `research` / `team` |
-| CLI (owns the loop) | `oh-my-mcode max` / `omm` | TypeScript orchestrator |
+| TUI | "max mode: …" / "make a verified plan" / "re-verify this run" | Skills `max` / `plan` / `verify` / `resume` / `review` / `ship` / `research` / `team` / `interview` |
+| CLI (owns the loop) | `oh-my-mcode max` / `omm` | TypeScript harness + orchestrator |
 | Headless | `mcode exec` + a prompt that loads the max skill | still `mcode`, not an `mmx` / `mavis` wrapper |
 
 State is never "prompt only":
@@ -52,19 +52,24 @@ skills/*/SKILL.md     TUI contracts (natural language only)
 agents/*.md           role contracts for the same host agent
 scripts/run-store.mjs atomic run store (TUI-safe, no extra CLI)
 scripts/doctor.mjs    package + sample-run checks
-src/*.ts              same store/verify machine for tests
+src/harness.ts        one core: submit / subscribe / bind a run
+src/subagent.ts       one role worker, no grandchildren
+src/*.ts              store/verify machine; CLI and MCP call submit
 schemas/*.schema.json events, tasks, findings, evidence
+docs/harness.md       Codex-as-platform map (host-honest)
 ```
 
 ## Schemas
 
-Event types: `run_created`, `phase_changed`, `task_started`, `task_completed`, `tool_called`, `test_ran`, `finding_emitted`, `repair_requested`, `run_accepted`, `run_rejected`, `run_resumed`, plus `review_completed`, `ship_prepared`, `research_completed`, `task_cancelled`, `team_spawned`, `worktree_created`, `hud_attached`, `run_cancelled`, `host_session_bound`.
+Event types: `run_created`, `phase_changed`, `task_started`, `task_completed`, `tool_called`, `test_ran`, `finding_emitted`, `repair_requested`, `run_accepted`, `run_rejected`, `run_resumed`, plus `review_completed`, `ship_prepared`, `research_completed`, `task_cancelled`, `team_spawned`, `worktree_created`, `hud_attached`, `run_cancelled`, `host_session_bound`, `interview_completed`, `subagent_spawned`.
+
+`src/harness.ts` is the one core: `submit(op)` / subscribe / bind a run (thread). CLI and MCP are surfaces. `src/subagent.ts` spawns one role worker (`mcode exec`) with a Task Contract. No grandchildren. See [harness.md](harness.md).
 
 One host session per run (`run.json.host_session_id`). Parallel team worktrees may use their own session because cwd differs. Planner exec uses `--output-schema`; verifier/review attach evidence via `--file`. TUI should call MCP `omm_*` tools when present (`mcp/server.mjs`).
 
 Workflow YAML under `workflows/` is parsed by `src/workflows.ts` and drives stop-after / phase lists.
 
-Flat team (`src/team.ts`) schedules independent builders. Optional worktrees: `src/worktree.ts`. HUD: `src/hud.ts`. Config: `src/config.ts`. Tool repair: `src/tool-repair.ts`.
+Flat team (`src/team.ts`) schedules independent builders via `spawnSubagent`. Optional worktrees: `src/worktree.ts`. HUD: `src/hud.ts`. Config: `src/config.ts`. Tool repair: `src/tool-repair.ts`. Interview intake: `src/interview.ts`.
 
 ## What we will not do
 

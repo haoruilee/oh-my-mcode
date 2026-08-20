@@ -33,9 +33,23 @@ Requires Node 22+ and MiniMax Code CLI **`mcode` 0.1.6** (`@minimax-ai/code`).
 
 | You want | Run | What lands |
 | :--- | :--- | :--- |
-| **CLI on PATH** | `git clone` → `npm install` → `npm link` | `oh-my-mcode` / `omm` |
-| **Health check** | `oh-my-mcode doctor` | Package + host checks. No network. |
-| **Plugin drop-in** | `oh-my-mcode install` | Copy into `~/.minimax/plugins/oh-my-mcode` |
+| **Plugin + CLI** | `npx oh-my-mcode install` | Copy into `~/.minimax/plugins/oh-my-mcode` |
+| **Health check** | `npx oh-my-mcode doctor` | Package + host checks. No network. |
+| **Host smoke** | `oh-my-mcode doctor --smoke` | One tiny `mcode exec` (`pong`) + latency |
+| **From git (until npm publish)** | `npx github:haoruilee/oh-my-mcode install --yes` | Same drop-in, no registry publish required |
+
+```bash
+npx oh-my-mcode install --yes
+npx oh-my-mcode doctor
+```
+
+Interim one-liner while this package is not on the public npm registry:
+
+```bash
+npx github:haoruilee/oh-my-mcode install --yes
+```
+
+Power-user (clone + link):
 
 ```bash
 git clone https://github.com/haoruilee/oh-my-mcode
@@ -57,10 +71,10 @@ Do **not** install this from [MiniMax-AI/skills](https://github.com/MiniMax-AI/s
 | ⚡ | **`max`** | One command. Plan → build → verify → ship. Doesn't Accept without evidence files. |
 | ✅ | **`verify`** | Independent acceptance. Deterministic tests first. The writer never grades the writer. |
 | 🔗 | **Session** | One host `mcode` session per run. Resume the same conversation. `--no-session` is the escape hatch. |
-| 🔌 | **MCP** | Dependency-free stdio tools: create / show / list runs, status, verify, inspect. |
+| 🔌 | **MCP** | Dependency-free stdio tools on the same harness: create / show / list / status / verify / interview / inspect. |
 | 👥 | **`team`** | Flat TypeScript scheduling of independent builders. Explicit. Sequential `max` stays the default. |
-| 🖥️ | **HUD** | `attach` / `status` read the same `.minimax/runs/<id>/` folder. No fake App panels. |
-| 🩺 | **`doctor`** | Host + package honesty. Skill listed but missing on disk? That's an error. |
+| 🖥️ | **HUD** | `attach` / `status` read the same `.minimax/runs/<id>/` folder. No fake App panels. Tokens/cost when the host stream has them. |
+| 🩺 | **`doctor`** | Host + package honesty. `--smoke` is a real pong exec. Skill listed but missing on disk? That's an error. |
 | 🧪 | **Evals** | Fixture harness (pass / fail-then-repair / plan-only). Not a production ΔY claim. |
 
 ## Power commands
@@ -68,6 +82,8 @@ Do **not** install this from [MiniMax-AI/skills](https://github.com/MiniMax-AI/s
 `max` is the only one you must remember. Alias: `omm`. The rest are power tools.
 
 ```bash
+oh-my-mcode interview "migrate mysql to postgres"
+oh-my-mcode max --interview "fix auth and prove tests pass"
 oh-my-mcode plan "migrate mysql to postgres"
 oh-my-mcode verify
 oh-my-mcode resume
@@ -76,9 +92,12 @@ oh-my-mcode ship            # Accepted only
 oh-my-mcode team "split independent builder tasks"
 oh-my-mcode attach --watch
 oh-my-mcode inspect skills
+oh-my-mcode doctor --smoke
 ```
 
-In the TUI, say `max mode: …`. Skills trigger on phrasing.
+In the TUI, say `max mode: …` or `interview this goal`. Skills trigger on phrasing.
+
+`interview` asks four short questions (goal, constraints, acceptance, out of scope) and stops at PLAN_REVIEW. Non-TTY: `--answers answers.json` or `--constraint` (repeatable). No builder.
 
 `max` / `plan` / `team` take `--session <id>` and `--no-session`. `ship` does not `git push` unless you pass `--commit`.
 
@@ -101,4 +120,4 @@ I wanted a delivery loop I could trust: a run that survives a crash, a verifier 
 
 That's the product. PRs welcome.
 
-[Host reality](docs/host-reality.md) · [Architecture](docs/architecture.md) · [Roadmap](docs/roadmap.md)
+[Host reality](docs/host-reality.md) · [Architecture](docs/architecture.md) · [Harness](docs/harness.md) · [Roadmap](docs/roadmap.md)
