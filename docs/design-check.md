@@ -231,6 +231,9 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 - Did not treat object artifacts as a schema loosen — we keep the path string the model already wrote.
 - Did not add a parallel `CLAUDE.md` / Cursor rules dump (pointer file only).
 - Did not copy Codex Clippy / a 300-line lint brief into `AGENTS.md`.
+- Did not run live `mcode` in CI or add MiniMax secrets.
+- Did not claim official marketplace listing or open a community-registry PR.
+- Did not invent a WorkerYield or source-grep `hello-repair`.
 - Did not npm publish.
 
 ## 19. Root AGENTS.md (contributor operating manual)
@@ -254,3 +257,14 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 6. **Host honesty?** Yes — Ask before a rematch that rebuilds better-sqlite3 on daily Node 24 `mcode`. Never run live `mcode` under Node 22 with an addon compiled for 137 (or vice versa) without an explicit rebuild. Host contract unchanged.
 7. **Hero stays `max`?** Yes.
 8. **Codex-as-platform fit?** AGENTS.md remains the entry. Typed yield stays in TypeScript. Resist bloating `orchestrator.ts` / `mcode.ts`.
+
+## 21. Hermetic CI + marketplace doc + hello-repair fixture
+
+1. **Verified delivery?** Yes — CI runs `npm test` and `npm run eval` (fixture harness). `hello-repair` is a real two-export miss (`hello()` / `greet()` imported, only `placeholder()` exported); the hermetic test runs `npm test` in a copy and expects failure. Plan/max tests stay on `hello-pkg`.
+2. **Harness not prompt pack?** Yes — workflow YAML + a short doc + a fixture. No new SKILL. No invented WorkerYield.
+3. **One core, many surfaces?** Unchanged. CLI and MCP still `submit`. Marketplace doc is how a human submits; it does not add a catalog API.
+4. **Subagents are workers not trees?** Unchanged. No grandchildren.
+5. **MiniMax-native?** Yes — npm only (no bun/pnpm). Official submit is ZIP or public GitHub with `.minimax-plugin/plugin.json` at repo root. Local install stays `npx oh-my-mcode install --yes`.
+6. **Host honesty?** Yes — job is named hermetic; no live `mcode`; no MiniMax secrets. `docs/marketplace.md` does not claim we are listed. Community registry is optional and separate; this cut does not open a PR there. `evals/tasks/fail-then-repair` remains the `.repaired` stub.
+7. **Hero stays `max`?** Yes.
+8. **Codex-as-platform fit?** CI is a gate, not a second loop. No production ΔY. No `/max`, hooks, or Sisyphus.

@@ -7,6 +7,8 @@
 | Gate | Command |
 | --- | --- |
 | hermetic | `npm test` |
+| hermetic eval | `npm run eval` (fixture harness; not live `mcode`) |
+| CI | `.github/workflows/hermetic.yml` runs the two hermetic gates on push/PR to `main`. No live `mcode`, no MiniMax secrets. |
 | live rematch | `oh-my-mcode plan` or `oh-my-mcode max` on a **copy** of `test/fixtures/hello-pkg` |
 
 This repo uses **npm**. Do **not** use bun or pnpm — those rewrite the lockfile. Do not run a production publish or `npm publish` in an agent session.
@@ -50,7 +52,8 @@ Host already has explore / plan / team. Role files do **not** register new host 
 | `docs/design-check.md` | Eight questions after each cut. Fail → change the cut. |
 | `docs/harness.md` | Codex-as-platform map. |
 | `test/host-contract.test.mjs` | Locked host argv / stream / yield contract. |
-| `test/fixtures/hello-pkg` | Live rematch fixture (`hello()` imported, `placeholder()` exported). |
+| `test/fixtures/hello-pkg` | Live rematch / plan-max fixture (`hello()` imported, `placeholder()` exported). Keep plan/max tests pointed here. |
+| `test/fixtures/hello-repair` | Two-export fixture (`hello()` + `greet()` imported, only `placeholder()` exported). Hermetic `npm test` in the fixture must fail. |
 | `test/fixtures/fake-mcode.mjs` | Hermetic stub. **Not** live QA. |
 | `examples/AGENTS.max-mode.md` | Opt-in template for a **user** product repo. |
 

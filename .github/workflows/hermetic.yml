@@ -1,0 +1,31 @@
+# Hermetic CI only. No live `mcode`, no MiniMax secrets, not live QA.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  hermetic:
+    name: hermetic (npm test + fixture eval, no live mcode)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install (npm)
+        run: npm ci
+      - name: Hermetic unit tests
+        run: npm test
+      - name: Fixture eval harness
+        run: npm run eval

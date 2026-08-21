@@ -105,7 +105,7 @@ In the TUI, say `max mode: …` or `interview this goal`. Skills trigger on phra
 
 ## Host honesty
 
-`max` is not a registered `/max`. We coexist with host `/plan` `/goal` `/resume` `/team`. We do not replace Plan Mode. Official catalog listing is a separate registry — this repo does not claim to be on it.
+`max` is not a registered `/max`. We coexist with host `/plan` `/goal` `/resume` `/team`. We do not replace Plan Mode. Official catalog listing is a separate registry — this repo does not claim to be on it. How a human submits: [docs/marketplace.md](docs/marketplace.md).
 
 ## Uninstall
 
@@ -122,4 +122,4 @@ I wanted a delivery loop I could trust: a run that survives a crash, a verifier 
 
 That's the product. PRs welcome.
 
-[Host reality](docs/host-reality.md) · [Architecture](docs/architecture.md) · [Harness](docs/harness.md) · [Roadmap](docs/roadmap.md) · [AGENTS.md](AGENTS.md) · [Max Mode template](examples/AGENTS.max-mode.md)
+[Host reality](docs/host-reality.md) · [Architecture](docs/architecture.md) · [Harness](docs/harness.md) · [Roadmap](docs/roadmap.md) · [Marketplace](docs/marketplace.md) · [AGENTS.md](AGENTS.md) · [Max Mode template](examples/AGENTS.max-mode.md)

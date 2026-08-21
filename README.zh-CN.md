@@ -105,7 +105,7 @@ TUI 里说 `max mode: …` 或 `interview this goal`。Skill 靠措辞触发。
 
 ## Host honesty
 
-`max` 不是已注册的宿主命令 `/max`。我们与宿主 `/plan` `/goal` `/resume` `/team` 共存。我们不替换 Plan Mode。官方目录是另一套注册表——本仓库不声称已上架。
+`max` 不是已注册的宿主命令 `/max`。我们与宿主 `/plan` `/goal` `/resume` `/team` 共存。我们不替换 Plan Mode。官方目录是另一套注册表——本仓库不声称已上架。人工提交说明：[docs/marketplace.md](docs/marketplace.md)。
 
 ## Uninstall
 
@@ -122,4 +122,4 @@ rm -rf ~/.minimax/plugins/oh-my-mcode
 
 就是这个产品。欢迎 PR。
 
-[宿主现状](docs/host-reality.zh-CN.md) · [架构](docs/architecture.zh-CN.md) · [Harness](docs/harness.md) · [路线图](docs/roadmap.md) · [AGENTS.md](AGENTS.md) · [Max Mode 模板](examples/AGENTS.max-mode.md)
+[宿主现状](docs/host-reality.zh-CN.md) · [架构](docs/architecture.zh-CN.md) · [Harness](docs/harness.md) · [路线图](docs/roadmap.md) · [Marketplace](docs/marketplace.md) · [AGENTS.md](AGENTS.md) · [Max Mode 模板](examples/AGENTS.max-mode.md)
