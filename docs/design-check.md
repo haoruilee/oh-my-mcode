@@ -186,7 +186,7 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 2. **Harness not prompt pack?** Yes — tiny-yield copy, `isHostNativeCrash`, `yieldCrashRetryRequest`, snapshot stderr cap (400), and `discover.md` crash notes live in TypeScript. Role file stayed a short contract.
 3. **One core, many surfaces?** Same spawn path for `plan` / `max` / `team`. CLI and MCP do not parse worker prose.
 4. **Subagents are workers not trees?** Unchanged. One `mcode exec` per worker. At most one reminder and one crash retry. No grandchild.
-5. **MiniMax-native?** Yes — we follow the live host abort, not a Node 22 swap we cannot do. Still no `--output-schema` (exit 70). First explorer exec keeps `--max-steps 20` and tools.
+5. **MiniMax-native?** Yes — we follow the live host abort. Node 24 + better-sqlite3 can GC-abort; that is observed, not a ban on Node 22. Still no `--output-schema` (exit 70). First explorer exec keeps `--max-steps 20` and tools.
 6. **Host honesty?** **Pass, enforced.** Exit 1 without sqlite/assert/SIGABRT is still crash / incomplete, not a crash-retry. Native stacks stay out of `discover.md` (yield summary / assistant JSON / short crash note). Snapshot may keep a 400-char stderr excerpt. We do not dump raw JSONL into the next prompt. We do not invent a WorkerYield from prose. Schema stays strict.
 7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `plan` / `team`.
 8. **Codex-as-platform fit?** Typed yield is still a harness concern. One reminder. One crash retry. No hashline. No npm publish.
@@ -225,7 +225,18 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 - Did not dump `dyld` / better-sqlite3 stacks into `discover.md`.
 - Did not add a second schema reminder or a crash-retry storm.
 - Did not drop tools or `--max-steps 20` on the first explorer exec.
-- Did not send host `--output-schema` or depend on a Node 22 swap.
+- Did not send host `--output-schema`. Node 24 sqlite abort is documented as observed; a later rematch used Node 22 then rebuilt the addon back to 24.
 - Did not invent artifact paths when the model omitted `path` / `file`.
 - Did not invent a WorkerYield from blocked-explorer prose.
 - Did not treat object artifacts as a schema loosen — we keep the path string the model already wrote.
+
+## 19. Root AGENTS.md (contributor operating manual)
+
+1. **Verified delivery?** Yes — AGENTS.md tells agents to drive `max`/`plan` and demand live evidence, which is how the loop actually closed (`plan` → PLAN_REVIEW; `max --no-llm-verify` → ACCEPT / `hello()`).
+2. **Harness not prompt pack?** Yes — this file describes the TypeScript harness; it does not become the orchestrator.
+3. **One core, many surfaces?** Unchanged. CLI and MCP still `submit`. The user-repo template (`examples/AGENTS.max-mode.md`) is opt-in copy; `install` does not overwrite a project `AGENTS.md`.
+4. **Subagents are workers not trees?** Stated. Five workers. One exec each. No grandchildren.
+5. **MiniMax-native?** Yes — host stays `mcode`; no fake `/max`. Role files stay contracts for the same host process.
+6. **Host honesty?** Yes — Node 24 sqlite abort and session XOR continue are documented as observed, not wished. Rematch used Node 22 then rebuilt the addon back to 24.
+7. **Hero stays `max`?** Yes. `plan` is the PLAN_REVIEW stop. The user template's hero command is `oh-my-mcode max` / `omm`.
+8. **Codex-as-platform fit?** AGENTS.md is the Codex/Cursor entry; typed yield stays in TypeScript.

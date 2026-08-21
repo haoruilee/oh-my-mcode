@@ -122,4 +122,4 @@ I wanted a delivery loop I could trust: a run that survives a crash, a verifier 
 
 That's the product. PRs welcome.
 
-[Host reality](docs/host-reality.md) · [Architecture](docs/architecture.md) · [Harness](docs/harness.md) · [Roadmap](docs/roadmap.md)
+[Host reality](docs/host-reality.md) · [Architecture](docs/architecture.md) · [Harness](docs/harness.md) · [Roadmap](docs/roadmap.md) · [AGENTS.md](AGENTS.md) · [Max Mode template](examples/AGENTS.max-mode.md)
