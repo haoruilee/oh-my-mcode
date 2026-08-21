@@ -10,7 +10,11 @@ export function measurePrompt(text: string): { chars: number; est_tokens: number
 }
 
 export function tpsProbePrompt(): string {
-  return "reply with exactly pong and nothing else";
+  return [
+    "Reply with exactly the word pong.",
+    "Then write two short sentences confirming you used no tools and edited no files.",
+    "Do not use tools. Do not edit files. Do not spawn.",
+  ].join(" ");
 }
 
 function packetBlock(label: string, value: string): string {
@@ -26,6 +30,8 @@ Goal: ${goal}
 ${packetBlock("Interview path", interview ? "interview.md" : "")}
 Allowed: read/search. Do not edit product files. Do not spawn.
 Return paths, test/build commands, top risks.
+Greenfield / empty product tree: yield status ok with note findings (no src, suggested new files, test/build commands). Do not use status blocked because the repo is empty.
+blocked is only for missing permission or missing tools.
 ${yieldContractLine()}`;
 }
 

@@ -25,6 +25,7 @@ export interface StreamEvent {
   type?: string;
   text?: string;
   tool?: string;
+  role?: string;
 }
 
 export interface ExecResult {
@@ -60,11 +61,15 @@ export function mcodeExists(): boolean {
   return Boolean(which("mcode"));
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
+
 function asText(value: unknown): string {
   if (typeof value === "string") return value;
   if (Array.isArray(value)) return value.map(asText).filter(Boolean).join("\n");
-  if (value && typeof value === "object") {
-    const rec = value as Record<string, unknown>;
+  const rec = asRecord(value);
+  if (rec) {
     for (const key of ["text", "content", "answer", "result", "message", "output"]) {
       if (key in rec) {
         const inner = asText(rec[key]);
@@ -72,6 +77,22 @@ function asText(value: unknown): string {
       }
     }
   }
+  return "";
+}
+
+function eventRole(rec: Record<string, unknown> | undefined, fallback?: string): string | undefined {
+  if (typeof rec?.role === "string" && rec.role.trim()) return rec.role.trim();
+  const message = asRecord(rec?.message);
+  if (typeof message?.role === "string" && message.role.trim()) return message.role.trim();
+  return fallback;
+}
+
+function assistantContent(rec: Record<string, unknown> | undefined): string {
+  if (!rec) return "";
+  if (typeof rec.content === "string") return rec.content;
+  const message = asRecord(rec.message);
+  if (typeof message?.content === "string") return message.content;
+  if (typeof rec.text === "string") return rec.text;
   return "";
 }
 
@@ -92,10 +113,40 @@ export function parseStreamLine(line: string): StreamEvent {
           : typeof raw.toolName === "string"
             ? raw.toolName
             : undefined;
-    return { raw, type, text: asText(raw), tool };
+    return { raw, type, text: asText(raw), tool, role: eventRole(raw) };
   } catch {
     return { raw: line, type: "text", text: line };
   }
+}
+
+/** Documented mcode 0.2.1 cli exit codes. Exit 1 is crash / incomplete stream, not timeout. */
+export const HOST_EXIT = {
+  success: 0,
+  crash: 1,
+  invocation: 2,
+  config: 3,
+  runtime: 4,
+  blocked: 5,
+  timeout: 6,
+  limit: 7,
+  internal: 70,
+  cancelled: 130,
+} as const;
+
+export type HostExitKind = keyof typeof HOST_EXIT;
+
+export function classifyHostExit(code: number): HostExitKind | "unknown" {
+  if (code === HOST_EXIT.success) return "success";
+  if (code === HOST_EXIT.crash) return "crash";
+  if (code === HOST_EXIT.invocation) return "invocation";
+  if (code === HOST_EXIT.config) return "config";
+  if (code === HOST_EXIT.runtime) return "runtime";
+  if (code === HOST_EXIT.blocked) return "blocked";
+  if (code === HOST_EXIT.timeout) return "timeout";
+  if (code === HOST_EXIT.limit) return "limit";
+  if (code === HOST_EXIT.internal) return "internal";
+  if (code === HOST_EXIT.cancelled) return "cancelled";
+  return "unknown";
 }
 
 export const ROLE_EXEC_DEFAULTS: Record<
@@ -141,7 +192,9 @@ export function readOutputSchemaArg(value?: string): string | undefined {
  * a real host session (`mvs_…`) then discover failed with exit 6 (`Sw.timeout`).
  * Role defaults stay milliseconds internally; argv must carry a unit suffix.
  */
+export const HOST_TIMEOUT_PARSE_RE = /^(\d+)(ms|s|m|h)?$/i;
 export const HOST_TIMEOUT_ARG_RE = /^\d+(ms|s|m|h)$/i;
+export const HOST_PERMISSIONS = ["ask", "smart", "full", "off"] as const;
 
 export function formatHostTimeout(timeoutMs: number): string {
   return `${Math.max(1, Math.ceil(timeoutMs / 1000))}s`;
@@ -184,27 +237,49 @@ export function applyRoleDefaults(req: ExecRequest): ExecRequest {
   };
 }
 
+/**
+ * Stitch mcode 0.2.1 assistant `delta.content` (no inserted newlines) and the
+ * final `message.content` when role=assistant. Ignore user-role messages so
+ * the prompt's example yield JSON cannot win a greedy `{...}` match.
+ */
 export function collectAssistantText(events: StreamEvent[]): string {
-  const chunks = events
-    .filter((event) => {
-      const type = (event.type || "").toLowerCase();
-      if (type.includes("tool") || type.includes("error")) return false;
-      return Boolean(event.text);
-    })
-    .map((event) => event.text || "");
-  if (chunks.length > 0) return chunks.join("\n").trim();
-  return events
-    .map((event) => event.text || "")
-    .filter(Boolean)
-    .join("\n")
-    .trim();
+  const deltas: string[] = [];
+  let assistantMessage = "";
+  const legacy: string[] = [];
+  for (const event of events) {
+    const rec = asRecord(event.raw);
+    const type = (event.type || (typeof rec?.type === "string" ? rec.type : "") || "").toLowerCase();
+    const role = eventRole(rec, event.role);
+    if (role === "user" || type === "user") continue;
+    if (type.includes("tool") || type.includes("error") || type === "stderr") continue;
+    if (type === "delta") {
+      if (role && role !== "assistant") continue;
+      const content = typeof rec?.content === "string" ? rec.content : "";
+      if (content) deltas.push(content);
+      continue;
+    }
+    if (type === "message") {
+      if (role === "assistant") {
+        const content = assistantContent(rec);
+        if (content) assistantMessage = content;
+      }
+      continue;
+    }
+    if (type === "exec.result" || type === "exec_result") continue;
+    const text = typeof rec?.text === "string" ? rec.text : event.text || "";
+    if (text) legacy.push(text);
+  }
+  if (assistantMessage.trim()) return assistantMessage.trim();
+  if (deltas.length > 0) return deltas.join("").trim();
+  return legacy.join("\n").trim();
 }
 
 /** Spawn/parse failures are classified and retried once in `tool-repair.ts` (execWithRepair). */
 export class ProcessMcode implements McodeClient {
   async exec(req: ExecRequest): Promise<ExecResult> {
+    const prepared = applyRoleDefaults(req);
     const { command, prefixArgs } = resolveMcodeInvocation();
-    const args = buildExecArgs(req, prefixArgs);
+    const args = buildExecArgs(prepared, prefixArgs);
 
     const rawLines: string[] = [];
     const events: StreamEvent[] = [];
@@ -239,10 +314,10 @@ export class ProcessMcode implements McodeClient {
         stderr += chunk.toString("utf8");
       });
       const timer =
-        req.timeoutMs && req.timeoutMs > 0
+        prepared.timeoutMs && prepared.timeoutMs > 0
           ? setTimeout(() => {
               child.kill("SIGTERM");
-            }, req.timeoutMs)
+            }, prepared.timeoutMs)
           : undefined;
       child.on("error", (error) => {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {

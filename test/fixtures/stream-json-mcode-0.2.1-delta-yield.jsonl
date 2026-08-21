@@ -1,0 +1,6 @@
+{"_comment":"Synthetic 0.2.1 stream: user prompt contains a schema-valid example yield; assistant yield arrives as delta.content chunks; session lives in cursor (URL-encoded). Not a live CI run."}
+{"type":"message","timestamp":1000000000000,"message":{"role":"user","content":"Role: explorer.\nYield JSON (required, schemaMode=strict): {\"status\":\"ok\",\"summary\":\"EXAMPLE_ONLY\",\"findings\":[],\"artifacts\":[]}\nYOUR SESSION ID: mvs_e04430ddcafe"}}
+{"type":"delta","role":"assistant","content":"{\"status\":\"ok\",\"summary\":\"","timestamp":1000000004226,"chunkIndex":0}
+{"type":"delta","role":"assistant","content":"stitched-pong\",\"findings\":[],\"artifacts\":[]}","timestamp":1000000004300,"chunkIndex":1,"finish":true}
+{"type":"message","cursor":"sse1:session%3Amvs_e04430ddcafe","message":{"role":"assistant","content":"{\"status\":\"ok\",\"summary\":\"stitched-pong\",\"findings\":[],\"artifacts\":[]}","finishReason":"stop","usage":{"totalTokens":120,"inputTokens":80,"outputTokens":40,"requestDurationMs":800,"cacheReadTokens":0}}}
+{"schemaVersion":1,"type":"exec.result","sessionId":"mvs_e04430ddcafe","status":"succeeded","answer":"{\"status\":\"ok\",\"summary\":\"stitched-pong\",\"findings\":[],\"artifacts\":[]}","durationMs":1200,"model":{"providerId":"minimax","modelId":"MiniMax-M3","variant":"thinking"}}

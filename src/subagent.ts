@@ -1,8 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { CliError } from "./util.js";
 import type { Permission, Role, TaskContract } from "./types.js";
-import { hostOutputSchemaEnabled, type ExecRequest, type ExecResult, type McodeClient } from "./mcode.js";
-import { execTracked, type SessionOpts } from "./session.js";
+import { applyRoleDefaults, hostOutputSchemaEnabled, type ExecRequest, type ExecResult, type McodeClient } from "./mcode.js";
+import { execTracked, extractHostSessionId, isSynthesizedSessionToken, type SessionOpts } from "./session.js";
 import type { RunStore } from "./store.js";
 import { builderPrompt } from "./prompts.js";
 import {
@@ -89,7 +89,7 @@ export async function spawnSubagent(req: SpawnRequest, ctx: SpawnContext): Promi
 }
 
 async function execOnce(req: SpawnRequest, ctx: SpawnContext, prompt: string): Promise<ExecResult> {
-  const execReq: ExecRequest = {
+  const execReq: ExecRequest = applyRoleDefaults({
     cwd: req.cwd,
     prompt,
     role: req.role,
@@ -99,7 +99,7 @@ async function execOnce(req: SpawnRequest, ctx: SpawnContext, prompt: string): P
     timeoutMs: req.timeoutMs,
     maxSteps: req.maxSteps,
     outputSchema: req.outputSchema,
-  };
+  });
   if (
     hostOutputSchemaEnabled() &&
     !execReq.outputSchema &&
@@ -134,11 +134,19 @@ async function spawnOnce(req: SpawnRequest, ctx: SpawnContext): Promise<SpawnRes
   let result = await execOnce(req, ctx, prompt);
   let parsed = resolveYield(result, req.role);
   if (!parsed.ok) {
-    result = await execOnce(req, ctx, `${prompt}\n\n${yieldReminder(parsed.error)}`);
+    const hostSession = extractHostSessionId(result);
+    const reminderReq =
+      hostSession && !isSynthesizedSessionToken(hostSession) ? { ...req, session: hostSession } : req;
+    result = await execOnce(reminderReq, ctx, `${prompt}\n\n${yieldReminder(parsed.error)}`);
     parsed = resolveYield(result, req.role);
   }
   const workerYield = parsed.ok
     ? parsed.data
-    : emptyFailedYield("invalid worker yield", parsed.error);
+    : emptyFailedYield(
+        "invalid worker yield",
+        [parsed.error, result.text?.trim() ? `assistant_text: ${result.text.trim().slice(0, 1500)}` : ""]
+          .filter(Boolean)
+          .join("\n"),
+      );
   return { ...result, yield: workerYield };
 }

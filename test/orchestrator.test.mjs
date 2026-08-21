@@ -9,6 +9,7 @@ import { StubMcode } from "../dist/mcode.js";
 import { RunStore } from "../dist/store.js";
 import { main } from "../dist/cli.js";
 import { yieldResult } from "./helpers/yield.mjs";
+import { copyHelloPkg } from "./helpers/hello-pkg.mjs";
 
 const fakeMcode = path.resolve("test/fixtures/fake-mcode.mjs");
 
@@ -67,7 +68,7 @@ test("max with stub mcode reaches Accepted when tests pass", async () => {
 });
 
 test("plan does not enter PLAN_REVIEW when discover yield fails", async () => {
-  const workspace = project();
+  const workspace = copyHelloPkg();
   const run = await runPlan({
     workspace,
     goal: "host exit 70",
@@ -89,7 +90,7 @@ test("plan does not enter PLAN_REVIEW when discover yield fails", async () => {
 });
 
 test("plan does not enter PLAN_REVIEW when planner yield fails", async () => {
-  const workspace = project();
+  const workspace = copyHelloPkg();
   const run = await runPlan({
     workspace,
     goal: "planner died",
@@ -107,7 +108,7 @@ test("plan does not enter PLAN_REVIEW when planner yield fails", async () => {
 });
 
 test("plan stops at PLAN_REVIEW and does not Accept", async () => {
-  const workspace = project();
+  const workspace = copyHelloPkg();
   const run = await runPlan({
     workspace,
     goal: "migrate mysql to postgres",

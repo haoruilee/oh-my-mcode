@@ -1,4 +1,4 @@
-import type { ExecRequest, ExecResult, McodeClient } from "./mcode.js";
+import { classifyHostExit, type ExecRequest, type ExecResult, type McodeClient } from "./mcode.js";
 import type { RunStore } from "./store.js";
 
 export type ToolFailureKind = "ok" | "spawn" | "parse" | "timeout" | "nonzero";
@@ -32,6 +32,7 @@ export function classifyExecResult(result: ExecResult): ToolFailureKind {
   const parsed = result.events.filter((event) => event.type && event.type !== "text" && event.type !== "stderr");
   if (result.rawLines.length > 0 && result.text.trim() === "" && parsed.length === 0) return "parse";
   if (result.exitCode === 0) return "ok";
+  if (classifyHostExit(result.exitCode) === "timeout") return "timeout";
   return "nonzero";
 }
 
