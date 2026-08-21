@@ -33,7 +33,7 @@ These are **not** shipped and are **not** advertised as working:
 | Hooks (pre/post tool, session lifecycle) | Hooks are not public |
 | Custom plugin agents / host Agent Team spawn-cancel-resume APIs | Public plugins cannot register agents. Desktop `/team` stays the host's |
 | Skill index inspect ("was this skill dropped by the host?") | No public API. We can only prove manifest ↔ disk and `mcode plugin list` |
-| Official marketplace listing | Separate MiniMax registry. This repo does not claim to be listed |
+| Official marketplace listing | Separate MiniMax registry. This repo does not claim to be listed. How a human submits: [marketplace.md](marketplace.md) |
 
 Do not add empty packages (`workflow-engine`, `sdk`, `app-widgets`) to fake those APIs.
 
