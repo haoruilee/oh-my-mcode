@@ -356,9 +356,9 @@ test("extractStructuredYield ignores raw JSONL and planner graphs", () => {
 });
 
 test("invalid yield retries once then surfaces a failed yield", async () => {
-  const prompts = [];
+  const requests = [];
   const client = new StubMcode(async (req) => {
-    prompts.push(req.prompt);
+    requests.push(req);
     return { text: "not a yield", events: [], exitCode: 0, rawLines: ["not a yield"] };
   });
   const result = await spawnSubagent(
@@ -371,8 +371,15 @@ test("invalid yield retries once then surfaces a failed yield", async () => {
     },
     { client },
   );
-  assert.equal(prompts.length, 2);
-  assert.match(prompts[1], /schemaMode=strict/);
+  assert.equal(requests.length, 2);
+  assert.match(requests[1].prompt, /schemaMode=strict/);
+  assert.match(requests[1].prompt, /Do not use tools/);
+  assert.doesNotMatch(requests[1].prompt, /do the task/);
+  assert.equal(requests[1].maxSteps, 1);
+  assert.equal(requests[1].permission, "off");
+  assert.equal(requests[1].continue, true);
+  assert.equal(requests[0].maxSteps, ROLE_EXEC_DEFAULTS.builder.maxSteps);
+  assert.equal(requests[0].permission, "ask");
   assert.equal(result.yield.status, "failed");
   assert.match(result.yield.findings[0].detail, /structuredOutput|yield|schema/i);
 });

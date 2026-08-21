@@ -158,6 +158,17 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `plan` / `team`.
 8. **Codex-as-platform fit?** Typed yield and evidence stay harness concerns. We did not add hashline, hooks, `/max`, or npm publish.
 
+## 15. Explorer last message is yield JSON; reminder cannot start a tool loop
+
+1. **Verified delivery?** Yes — live `plan` on hello-pkg (mcode 0.2.1) mapped the fixture (`hello()` imported, `placeholder()` exported) then died on toolUse (exit 1, not timeout 6 / limit 7). Reminder reused the `mvs_` session but hashed files instead of writing yield JSON. Parent still requires `validateWorkerYield` / `schemaMode=strict`. We did not invent a WorkerYield from the assistant prose.
+2. **Harness not prompt pack?** Yes — reminder argv (`--session`, `--continue`, `--max-steps 1`, `--permission off`) is TypeScript in `yieldReminderRequest`. Role file stayed a short contract. Explorer prompt forbids post-map tools.
+3. **One core, many surfaces?** Same spawn / reminder path for `plan` / `max` / `team`. CLI and MCP do not parse worker prose.
+4. **Subagents are workers not trees?** Unchanged. One `mcode exec` per worker, one reminder, no grandchild. Reminder is a continuation of the same session, not a second explorer.
+5. **MiniMax-native?** Yes — host `--permission off` + `--max-steps 1` so the only legal assistant message is text. We still do not send `--output-schema` (exit 70).
+6. **Host honesty?** **Pass, enforced.** Exit 1 after toolUse stays crash / incomplete, not timeout. First explorer exec still sends role `--max-steps` (20). Reminder prompt is the yield reminder only — no raw JSONL, no first-exec transcript, no re-sent explore contract. Parent never synthesizes yield JSON from prose.
+7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `plan` / `team`.
+8. **Codex-as-platform fit?** Typed yield is still a harness concern. One reminder. No second retry. No hashline.
+
 ## Failures we refused
 
 - Did not add a second JSON-RPC next to MCP.
@@ -168,3 +179,7 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 - Did not add LSP, DAP, browser, memory bank, magic keywords, advisor TUI, or 31 tools.
 - Did not clone Agent Hub or spawn grandchildren.
 - Did not invent live TPS numbers when the host was stubbed.
+- Did not invent a WorkerYield from explorer prose or stitch file hashes into a fake yield.
+- Did not loosen `validateWorkerYield` or depend on host `--output-schema`.
+- Did not dump raw host JSONL into the reminder prompt.
+- Did not map host exit 1 (toolUse crash / incomplete) to timeout.

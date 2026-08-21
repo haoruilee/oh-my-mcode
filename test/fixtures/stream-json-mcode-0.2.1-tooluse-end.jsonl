@@ -1,0 +1,12 @@
+{"_comment":"Synthetic 0.2.1 stream modeled on the 2026-08-21 live hello-pkg explorer: tools then crash (exit 1). Assistant prose is not a yield. Not a live CI run."}
+{"type":"message","timestamp":1000000000000,"message":{"role":"user","content":"Role: explorer. Goal: add hello(). YOUR SESSION ID: mvs_c26375a905a64bbc8b25ae63a635c812"}}
+{"type":"message","timestamp":1000000001000,"message":{"role":"assistant","content":[{"type":"toolUse","name":"bash","input":{"command":"ls"}}]}}
+{"type":"tool_result","tool":"bash","content":"package.json src test"}
+{"type":"message","timestamp":1000000002000,"message":{"role":"assistant","content":[{"type":"toolUse","name":"read","input":{"path":"src/index.js"}}]}}
+{"type":"tool_result","tool":"read","content":"export function placeholder() { return \"todo\"; }"}
+{"type":"message","timestamp":1000000003000,"message":{"role":"assistant","content":[{"type":"toolUse","name":"read","input":{"path":"test/hello.test.js"}}]}}
+{"type":"tool_result","tool":"read","content":"import { hello } from \"../src/index.js\""}
+{"type":"delta","role":"assistant","content":"src/index.js exports placeholder(); test/hello.test.js imports hello() and expects the string hello.","timestamp":1000000004000}
+{"type":"message","cursor":"sse1:session%3Amvs_c26375a905a64bbc8b25ae63a635c812","message":{"role":"assistant","content":[{"type":"toolUse","name":"bash","input":{"command":"sha256sum src/index.js test/hello.test.js"}}]},"timestamp":1000000005000}
+{"type":"tool_result","tool":"bash","content":"aaaa src/index.js"}
+{"schemaVersion":1,"type":"exec.result","sessionId":"mvs_c26375a905a64bbc8b25ae63a635c812","status":"failed","durationMs":93000,"model":{"providerId":"minimax","modelId":"MiniMax-M3","variant":"thinking"}}

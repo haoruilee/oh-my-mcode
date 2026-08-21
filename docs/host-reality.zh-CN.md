@@ -69,7 +69,7 @@ mcode exec failed: --output-schema requires a JSON object.
 
 同一套 0.2.1 宿主里，`--timeout` 由 `chm` 解析：`/^(\d+)(ms|s|m|h)?$/i`。裸整数是**毫秒**，不是秒。PR #9 之后，`oh-my-mcode plan` 绑定了真实 session（`mvs_…`，`host_session_source: host`），随后 discover 以 **exit 6**（`Sw.timeout = 6`）失败：我们给 3 分钟 explorer 默认值传了 `--timeout 180`，宿主当成 180ms。实测 first_token_ms ~6030，然后超时。`doctor --smoke` 不传 `--timeout`，18s 成功；手动 `mcode exec --timeout 45s` 也成功。因此 worker argv 必须带单位后缀（`180s`），从不传裸整数。角色默认值对内仍用毫秒。
 
-同日稍后的 Mac 实测还锁定了：`--output-schema` 默认不传（传了仍 exit 70）；`--max-steps` / `--permission` 角色默认值必须进 argv；exit 1 是崩溃/半截流，不是 timeout；session 也可能在 `cursor: sse1:session%3Amvs_…` 和 `YOUR SESSION ID: mvs_…`；assistant `delta.content` 要拼进 `result.text` 并写成 typed snapshot，不能只留 JSONL 红acted stub；空仓库是 `ok`+note，不是 `blocked`；`doctor --tps` 没有 `message.usage` 就报 `unmeasured`。
+同日稍后的 Mac 实测还锁定了：`--output-schema` 默认不传（传了仍 exit 70）；`--max-steps` / `--permission` 角色默认值必须进 argv；exit 1 是崩溃/半截流，不是 timeout；session 也可能在 `cursor: sse1:session%3Amvs_…` 和 `YOUR SESSION ID: mvs_…`；assistant `delta.content` 要拼进 `result.text` 并写成 typed snapshot，不能只留 JSONL 红acted stub；空仓库是 `ok`+note，不是 `blocked`；`doctor --tps` 没有 `message.usage` 就报 `unmeasured`。再一次 hello-pkg live：explorer 读完 fixture 后停在 toolUse（exit 1），reminder 复用了 `mvs_` 却去 hash 文件。reminder 现在是 `--session` + `--continue` + `--max-steps 1` + `--permission off`，只许文本 yield JSON；不从散文伪造 yield。
 
 扁平 `oh-my-mcode team` 是 TypeScript 调度器（不派生孙 agent）。它**不是**宿主 Agent Team，也不是递归派生。桌面 `/team` 仍是宿主的。App 面板、已注册的 `/max`、hooks 要等公开 Extension API。
 
