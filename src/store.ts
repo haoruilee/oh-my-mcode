@@ -341,8 +341,8 @@ export class RunStore {
       const index = this.loadEvidence(runId);
       const destName = extra.name || `${nextEvidenceId(index.items)}-${path.basename(src)}`;
       const destRel = path.posix.join("evidence", destName);
-      const existingIdx = index.items.findIndex((item) => item.path === destRel);
-      const id = existingIdx >= 0 ? index.items[existingIdx].id : nextEvidenceId(index.items);
+      const existing = index.items.find((item) => item.path === destRel);
+      const id = existing?.id ?? nextEvidenceId(index.items);
       copyFileSync(src, path.join(this.dir(runId), "evidence", destName));
       const record: EvidenceRecord = {
         id,
@@ -355,8 +355,11 @@ export class RunStore {
       if (extra.notes) record.notes = extra.notes;
       const digest = sha256File(path.join(this.dir(runId), destRel));
       if (digest) record.sha256 = digest;
-      if (existingIdx >= 0) index.items[existingIdx] = record;
-      else index.items.push(record);
+      if (existing) {
+        index.items = index.items.map((item) => (item.path === destRel ? record : item));
+      } else {
+        index.items.push(record);
+      }
       writeJson(path.join(this.dir(runId), "evidence/index.json"), index);
       const eventType: EventType = kind === "test" ? "test_ran" : "tool_called";
       this.appendEventUnlocked(this.dir(runId), {
