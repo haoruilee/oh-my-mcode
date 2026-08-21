@@ -12,10 +12,14 @@ test("hello-repair fixture exists and npm test fails (missing exports)", () => {
   assert.ok(existsSync(path.join(HELLO_REPAIR_FIXTURE, "test/greet.test.js")));
 
   const workspace = copyHelloRepair();
+  // Parent `node --test` sets NODE_TEST_CONTEXT; a nested `node --test` then
+  // skips files and exits 0. Drop it so the fixture actually runs.
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
   const result = spawnSync("npm", ["test"], {
     cwd: workspace,
     encoding: "utf8",
-    env: { ...process.env },
+    env,
   });
   const output = `${result.stdout || ""}\n${result.stderr || ""}`;
   assert.notEqual(result.status, 0, output);
