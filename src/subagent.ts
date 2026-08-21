@@ -5,6 +5,7 @@ import {
   applyRoleDefaults,
   classifyHostExit,
   hostOutputSchemaEnabled,
+  isHostNativeCrash,
   sessionXorContinue,
   type ExecRequest,
   type ExecResult,
@@ -15,9 +16,11 @@ import type { RunStore } from "./store.js";
 import { builderPrompt } from "./prompts.js";
 import {
   collectStderr,
+  crashRetryPrompt,
   emptyFailedYield,
   looksLikePlannerGraph,
   parseWorkerYield,
+  SNAPSHOT_STDERR_MAX,
   workerYieldSchemaPath,
   yieldReminder,
   yieldSchemaAvailable,
@@ -25,9 +28,14 @@ import {
   type WorkerYield,
 } from "./yield.js";
 
-/** Reminder exec: one text-only step. Host permission `off` is legal on 0.2.1 and cannot start a tool loop. */
+/** Reminder / crash-retry exec: one text-only step. Host permission `off` is legal on 0.2.1. */
 export const YIELD_REMINDER_MAX_STEPS = 1;
 export const YIELD_REMINDER_PERMISSION: Permission = "off";
+export const YIELD_CRASH_RETRY_MAX_STEPS = 1;
+export const YIELD_CRASH_RETRY_PERMISSION: Permission = "off";
+/** Cap: at most one schema reminder + at most one native-crash retry. Not a retry storm. */
+export const YIELD_SCHEMA_REMINDER_MAX = 1;
+export const YIELD_CRASH_RETRY_MAX = 1;
 
 export interface SpawnRequest {
   role: Role;
@@ -104,13 +112,18 @@ export async function spawnSubagent(req: SpawnRequest, ctx: SpawnContext): Promi
 }
 
 /**
- * One reminder after an invalid yield. Same host session, text only.
+ * Text-only continuation. Same host session.
  * Live 0.2.1: `--session` and `--continue` are mutually exclusive (invocation, exit 2).
  * Prefer `--session <mvs_>`. `--continue` only when no session id exists.
  * `--permission off` is in the host enum; it is not the exit-2 cause.
  */
-export function yieldReminderRequest(req: SpawnRequest, first: ExecResult): SpawnRequest {
-  const hostSession = extractHostSessionId(first);
+export function textOnlyContinuationRequest(
+  req: SpawnRequest,
+  last: ExecResult,
+  maxSteps: number,
+  permission: Permission,
+): SpawnRequest {
+  const hostSession = extractHostSessionId(last);
   const candidate = hostSession && !isSynthesizedSessionToken(hostSession) ? hostSession : req.session;
   const session = candidate && !isSynthesizedSessionToken(candidate) ? candidate : undefined;
   const legal = sessionXorContinue({ session, continue: !session });
@@ -118,9 +131,32 @@ export function yieldReminderRequest(req: SpawnRequest, first: ExecResult): Spaw
     ...req,
     session: legal.session,
     continue: legal.continue,
-    maxSteps: YIELD_REMINDER_MAX_STEPS,
-    permission: YIELD_REMINDER_PERMISSION,
+    maxSteps,
+    permission,
   };
+}
+
+/** Schema reminder: one text-only step after an invalid (non-native-crash) yield. */
+export function yieldReminderRequest(req: SpawnRequest, first: ExecResult): SpawnRequest {
+  return textOnlyContinuationRequest(req, first, YIELD_REMINDER_MAX_STEPS, YIELD_REMINDER_PERMISSION);
+}
+
+/** Distinct from the schema reminder. Same argv shape; different prompt. */
+export function yieldCrashRetryRequest(req: SpawnRequest, last: ExecResult): SpawnRequest {
+  return textOnlyContinuationRequest(req, last, YIELD_CRASH_RETRY_MAX_STEPS, YIELD_CRASH_RETRY_PERMISSION);
+}
+
+function followUpFailureNotes(label: string, result: ExecResult): string[] {
+  const exit = classifyHostExit(result.exitCode);
+  const notes: string[] = [];
+  if (exit !== "success") notes.push(`${label}_exit: ${result.exitCode} (${exit})`);
+  if (isHostNativeCrash(result)) {
+    notes.push(`${label}: host native crash (sqlite/assert)`);
+    return notes;
+  }
+  const stderr = collectStderr(result);
+  if (stderr) notes.push(`${label}_stderr: ${stderr.slice(0, SNAPSHOT_STDERR_MAX)}`);
+  return notes;
 }
 
 async function execOnce(req: SpawnRequest, ctx: SpawnContext, prompt: string): Promise<ExecResult> {
@@ -170,16 +206,36 @@ async function spawnOnce(req: SpawnRequest, ctx: SpawnContext): Promise<SpawnRes
   const first = await execOnce(req, ctx, prompt);
   let parsed = resolveYield(first, req.role);
   let reminder: ExecResult | undefined;
-  if (!parsed.ok) {
+  let crashRetry: ExecResult | undefined;
+  let reminderUsed = 0;
+  let crashRetryUsed = 0;
+
+  if (!parsed.ok && isHostNativeCrash(first) && crashRetryUsed < YIELD_CRASH_RETRY_MAX) {
+    // Native crash + no valid yield: one extra text-only exec. Not a schema reminder.
+    crashRetryUsed += 1;
+    crashRetry = await execOnce(yieldCrashRetryRequest(req, first), ctx, crashRetryPrompt());
+    parsed = resolveYield(crashRetry, req.role);
+  } else if (!parsed.ok && reminderUsed < YIELD_SCHEMA_REMINDER_MAX) {
     // Continuation only. Do not re-send the explore contract (that invited a tool loop).
     // Do not dump first-exec JSONL or assistant prose into this prompt.
+    reminderUsed += 1;
     reminder = await execOnce(yieldReminderRequest(req, first), ctx, yieldReminder(parsed.error));
     parsed = resolveYield(reminder, req.role);
+    if (!parsed.ok && isHostNativeCrash(reminder) && crashRetryUsed < YIELD_CRASH_RETRY_MAX) {
+      crashRetryUsed += 1;
+      crashRetry = await execOnce(yieldCrashRetryRequest(req, reminder), ctx, crashRetryPrompt());
+      parsed = resolveYield(crashRetry, req.role);
+    }
   }
-  const assistant = (first.text || "").trim() || (reminder?.text || "").trim();
-  const reminderStderr = reminder ? collectStderr(reminder) : "";
-  const reminderExit = reminder ? classifyHostExit(reminder.exitCode) : undefined;
-  const evidence = reminder && (reminder.text || "").trim() ? reminder : first;
+
+  const assistant =
+    (first.text || "").trim() || (reminder?.text || "").trim() || (crashRetry?.text || "").trim();
+  const evidence =
+    crashRetry && (crashRetry.text || "").trim()
+      ? crashRetry
+      : reminder && (reminder.text || "").trim()
+        ? reminder
+        : first;
   const workerYield = parsed.ok
     ? parsed.data
     : emptyFailedYield(
@@ -187,10 +243,8 @@ async function spawnOnce(req: SpawnRequest, ctx: SpawnContext): Promise<SpawnRes
         [
           parsed.error,
           assistant ? `assistant_text: ${assistant.slice(0, 1500)}` : "",
-          reminder && reminderExit && reminderExit !== "success"
-            ? `reminder_exit: ${reminder.exitCode} (${reminderExit})`
-            : "",
-          reminderStderr ? `reminder_stderr: ${reminderStderr.slice(0, 1500)}` : "",
+          ...(reminder ? followUpFailureNotes("reminder", reminder) : []),
+          ...(crashRetry ? followUpFailureNotes("crash_retry", crashRetry) : []),
         ]
           .filter(Boolean)
           .join("\n"),
@@ -198,6 +252,8 @@ async function spawnOnce(req: SpawnRequest, ctx: SpawnContext): Promise<SpawnRes
   return {
     ...evidence,
     yield: workerYield,
-    ...(reminder ? { firstExec: first, reminderExec: reminder } : {}),
+    ...(reminder || crashRetry ? { firstExec: first } : {}),
+    ...(reminder ? { reminderExec: reminder } : {}),
+    ...(crashRetry ? { crashRetryExec: crashRetry } : {}),
   };
 }

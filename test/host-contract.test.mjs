@@ -6,6 +6,7 @@ import path from "node:path";
 import { test } from "node:test";
 import {
   HOST_EXIT,
+  HOST_NATIVE_CRASH_RE,
   HOST_PERMISSIONS,
   HOST_SESSION_CONTINUE_EXCLUSIVE,
   HOST_TIMEOUT_ARG_RE,
@@ -18,6 +19,7 @@ import {
   classifyHostExit,
   collectAssistantText,
   formatHostTimeout,
+  isHostNativeCrash,
   isLegalHostSessionArgv,
   parseStreamLine,
   sessionXorContinue,
@@ -29,7 +31,12 @@ import {
   synthesizeSessionToken,
 } from "../dist/session.js";
 import {
+  SNAPSHOT_STDERR_MAX,
+  TINY_YIELD_FINDINGS_MAX,
+  TINY_YIELD_SUMMARY_MAX,
   buildExecSnapshot,
+  crashRetryPrompt,
+  extractCompleteYieldFromText,
   extractStructuredOutput,
   extractStructuredYield,
   parseWorkerYield,
@@ -42,9 +49,14 @@ import { classifyExecResult } from "../dist/tool-repair.js";
 import { explorerPrompt, tpsProbePrompt } from "../dist/prompts.js";
 import {
   spawnSubagent,
+  yieldCrashRetryRequest,
   yieldReminderRequest,
+  YIELD_CRASH_RETRY_MAX,
+  YIELD_CRASH_RETRY_MAX_STEPS,
+  YIELD_CRASH_RETRY_PERMISSION,
   YIELD_REMINDER_MAX_STEPS,
   YIELD_REMINDER_PERMISSION,
+  YIELD_SCHEMA_REMINDER_MAX,
 } from "../dist/subagent.js";
 import { runPlan } from "../dist/orchestrator.js";
 import { RunStore } from "../dist/store.js";
@@ -203,9 +215,12 @@ test("explorer prompt treats greenfield as ok notes, not blocked", () => {
 
 test("explorer prompt forbids post-map tools; last message is only yield JSON", () => {
   const prompt = explorerPrompt("add hello()");
-  assert.match(prompt, /LAST message is ONLY the yield JSON/i);
+  assert.match(prompt, /LAST message is ONLY the tiny yield JSON/i);
   assert.match(prompt, /No more tools/);
   assert.match(prompt, /Do not hash files unless the yield already includes file_hashes/);
+  assert.match(prompt, /package\.json/);
+  assert.match(prompt, /src\/index\.js/);
+  assert.match(prompt, /test\/hello\.test\.js/);
   assert.doesNotMatch(prompt, /package\.json[\s\S]*export function/);
 });
 
@@ -292,12 +307,12 @@ test("yield reminder reuses the extracted mvs_ session (no omm_run_ token)", asy
   assert.equal(requests[1].permission, YIELD_REMINDER_PERMISSION);
   assert.match(requests[1].prompt, /schemaMode=strict/);
   assert.match(requests[1].prompt, /Do not use tools/);
-  assert.match(requests[1].prompt, /only the yield JSON object/);
+  assert.match(requests[1].prompt, /only the tiny yield JSON object/);
   assert.doesNotMatch(requests[1].prompt, /Allowed: read\/search/);
   assert.doesNotMatch(requests[1].prompt, /look around/);
   assert.match(requests[1].prompt, /^Yield failed schemaMode=strict:/);
   assert.match(yieldReminder("missing yield"), /Do not use tools/);
-  assert.match(yieldReminder("missing yield"), /only the yield JSON object/);
+  assert.match(yieldReminder("missing yield"), /only the tiny yield JSON object/);
   assert.doesNotMatch(yieldReminder("missing yield"), /Allowed: read\/search/);
   assert.doesNotMatch(requests[1].session || "", /^omm_/);
   assert.equal(store.load(run.run_id).host_session_id, "mvs_e04430ddcafe");
@@ -765,4 +780,351 @@ test("buildExecSnapshot is typed evidence, not raw JSONL", () => {
   assert.equal(invocationSnap.host_exit, "invocation");
   assert.equal(invocationSnap.exit_code, 2);
   assert.match(invocationSnap.stderr, /mutually exclusive/);
+});
+
+const SQLITE_CRASH_STDERR = [
+  "Node version may be <18 so better-sqlite3 native bindings fail.",
+  "Statement::~Statement during GC",
+  "RemoveEnvironmentCleanupHook assert (env) != nullptr",
+  "SIGABRT",
+  "dyld[12345]: lazy symbol binding failed for better-sqlite3.node",
+  "0   libsystem_kernel.dylib            0x0000000188e1e388 __pthread_kill + 8",
+  "1   libsystem_pthread.dylib           0x0000000188e56f94 pthread_kill + 288",
+  "2   libsystem_c.dylib                 0x0000000188d62c60 abort + 180",
+].join("\n");
+
+function sqliteCrash(text, sessionId) {
+  const events = [
+    { raw: { type: "delta", role: "assistant", content: text }, type: "delta", role: "assistant", text },
+    { raw: SQLITE_CRASH_STDERR, type: "stderr", text: SQLITE_CRASH_STDERR },
+  ];
+  if (sessionId) {
+    events.push({
+      raw: { type: "message", cursor: `sse1:session%3A${sessionId}`, message: { role: "assistant" } },
+      type: "message",
+      role: "assistant",
+    });
+  }
+  return {
+    text,
+    events,
+    exitCode: HOST_EXIT.crash,
+    rawLines: [],
+    stderr: SQLITE_CRASH_STDERR,
+  };
+}
+
+const TINY_OK_YIELD = {
+  status: "ok",
+  summary: "hello-pkg: hello() missing",
+  findings: [
+    {
+      severity: "note",
+      title: "no hello()",
+      detail: "src exports placeholder",
+      evidence: ["src/index.js"],
+    },
+  ],
+  artifacts: ["src/index.js", "test/hello.test.js"],
+};
+
+test("tiny yield reminder and explorer contract demand a short object", () => {
+  const reminder = yieldReminder("missing yield");
+  assert.match(reminder, /schemaMode=strict/);
+  assert.match(reminder, /only the tiny yield JSON object/);
+  assert.match(reminder, /≤80 chars|<=80 chars|80 chars/);
+  assert.match(reminder, /at most 2 findings/);
+  assert.match(reminder, /Do not use tools/);
+  assert.doesNotMatch(reminder, /Allowed: read\/search/);
+  assert.equal(TINY_YIELD_SUMMARY_MAX, 80);
+  assert.equal(TINY_YIELD_FINDINGS_MAX, 2);
+
+  const crash = crashRetryPrompt();
+  assert.match(crash, /only the tiny yield JSON object/);
+  assert.match(crash, /at most 2 findings/);
+  assert.match(crash, /This is not a schema reminder/);
+  assert.doesNotMatch(crash, /^Yield failed schemaMode=strict:/);
+  assert.doesNotMatch(crash, /Allowed: read\/search/);
+
+  const contract = yieldContractLine();
+  assert.match(contract, /Tiny yield JSON/);
+  assert.match(contract, /80/);
+  assert.match(contract, /at most 2 findings/);
+});
+
+test("complete looksLikeYield in assistant_text parses even if more text follows; truncated JSON is not repaired", () => {
+  const complete = `${JSON.stringify(TINY_OK_YIELD)} Node version may be <18 so`;
+  const fromText = extractCompleteYieldFromText(complete);
+  assert.deepEqual(fromText, TINY_OK_YIELD);
+  const parsed = parseWorkerYield({
+    text: complete,
+    events: [{ raw: { type: "delta", role: "assistant", content: complete }, type: "delta", role: "assistant" }],
+    exitCode: 1,
+    rawLines: [],
+  });
+  assert.equal(parsed.ok, true, parsed.ok ? "" : parsed.error);
+  assert.equal(parsed.data.summary, TINY_OK_YIELD.summary);
+  assert.equal(validateWorkerYield(parsed.data).ok, true);
+
+  const truncated = '{"status":"ok","summary":"hello-pkg maps src","findings":[],"artifacts":["src/index.js"],"note":"Node version may be <18 so';
+  assert.equal(extractCompleteYieldFromText(truncated), undefined);
+  const broken = parseWorkerYield({
+    text: truncated,
+    events: [],
+    exitCode: 1,
+    rawLines: [],
+  });
+  assert.equal(broken.ok, false, "must not invent a closing brace or fields");
+  assert.equal(extractStructuredYield({ text: truncated, events: [], exitCode: 1, rawLines: [] }), undefined);
+});
+
+test("crash + truncated JSON triggers exactly one extra text-only exec (not a schema reminder)", async () => {
+  assert.equal(YIELD_SCHEMA_REMINDER_MAX, 1);
+  assert.equal(YIELD_CRASH_RETRY_MAX, 1);
+  const requests = [];
+  const truncated = '{"status":"ok","summary":"hello-pkg maps src","findings":[],"artifacts":["src';
+  const client = new StubMcode(async (req) => {
+    requests.push(req);
+    if (requests.length === 1) return sqliteCrash(truncated, "mvs_crashretry01");
+    return {
+      text: `${JSON.stringify(TINY_OK_YIELD)} trailing host noise`,
+      events: [{ raw: { type: "exec.result", answer: TINY_OK_YIELD }, type: "exec.result" }],
+      exitCode: 0,
+      rawLines: [],
+    };
+  });
+  const result = await spawnSubagent(
+    {
+      role: "explorer",
+      contract: { task_id: "T1", objective: "look", acceptance: [], constraints: [] },
+      permission: "ask",
+      cwd: tmp(),
+      prompt: explorerPrompt("add hello()"),
+    },
+    { client },
+  );
+  assert.equal(requests.length, 2, "native crash + no valid yield = one crash retry, not reminder then retry");
+  assert.equal(requests[0].maxSteps, ROLE_EXEC_DEFAULTS.explorer.maxSteps);
+  assert.equal(requests[0].permission, "ask");
+  assert.equal(requests[1].session, "mvs_crashretry01");
+  assert.notEqual(requests[1].continue, true);
+  assert.equal(requests[1].maxSteps, YIELD_CRASH_RETRY_MAX_STEPS);
+  assert.equal(requests[1].permission, YIELD_CRASH_RETRY_PERMISSION);
+  assert.match(requests[1].prompt, /This is not a schema reminder/);
+  assert.doesNotMatch(requests[1].prompt, /^Yield failed schemaMode=strict:/);
+  assert.doesNotMatch(requests[1].prompt, /Allowed: read\/search/);
+  assert.doesNotMatch(requests[1].prompt, /add hello\(\)/);
+  assert.equal(result.yield.status, "ok");
+  assert.equal(validateWorkerYield(result.yield).ok, true);
+  assert.equal(result.crashRetryExec.exitCode, 0);
+
+  const retryArgv = buildExecArgs(requests[1]);
+  assert.equal(isLegalHostSessionArgv(retryArgv), true);
+  assert.equal(retryArgv.includes("--continue"), false);
+  assert.equal(retryArgv[retryArgv.indexOf("--session") + 1], "mvs_crashretry01");
+  assert.equal(schemaArg(retryArgv), undefined);
+});
+
+test("two native crashes still fail honest (no third exec, no invented yield)", async () => {
+  const requests = [];
+  const truncated = '{"status":"ok","summary":"Node version may be <18 so';
+  const client = new StubMcode(async (req) => {
+    requests.push(req);
+    return sqliteCrash(truncated, "mvs_twocrash02");
+  });
+  const result = await spawnSubagent(
+    {
+      role: "explorer",
+      contract: { task_id: "T1", objective: "look", acceptance: [], constraints: [] },
+      permission: "ask",
+      cwd: tmp(),
+      prompt: explorerPrompt("add hello()"),
+    },
+    { client },
+  );
+  assert.equal(requests.length, 2, "first crash + one crash retry; no reminder storm");
+  assert.match(requests[1].prompt, /This is not a schema reminder/);
+  assert.equal(result.yield.status, "failed");
+  assert.equal(validateWorkerYield({ status: "ok", summary: "invented" }).ok, false);
+  assert.match(result.yield.findings[0].detail, /crash_retry_exit: 1 \(crash\)/);
+  assert.match(result.yield.findings[0].detail, /host native crash/);
+  assert.doesNotMatch(result.yield.findings[0].detail, /dyld/);
+});
+
+test("schema reminder then crash-retry: complete tiny yield after crash-retry parses", async () => {
+  const requests = [];
+  const truncated = '{"status":"ok","summary":"essay that never closed","findings":[{"severity":"note","title":"a","detail":"Node version may be <18 so';
+  const client = new StubMcode(async (req) => {
+    requests.push(req);
+    if (requests.length === 1) {
+      return { text: "mapped hello-pkg in prose", events: [], exitCode: 0, rawLines: [] };
+    }
+    if ((req.prompt || "").startsWith("Yield failed")) {
+      return sqliteCrash(truncated, "mvs_remindcrash3");
+    }
+    return {
+      text: JSON.stringify(TINY_OK_YIELD),
+      events: [{ raw: { type: "exec.result", answer: TINY_OK_YIELD }, type: "exec.result" }],
+      exitCode: 0,
+      rawLines: [],
+    };
+  });
+  const result = await spawnSubagent(
+    {
+      role: "explorer",
+      contract: { task_id: "T1", objective: "look", acceptance: [], constraints: [] },
+      permission: "ask",
+      cwd: tmp(),
+      prompt: explorerPrompt("add hello()"),
+    },
+    { client },
+  );
+  assert.equal(requests.length, 3, "cap is one reminder + one crash retry");
+  assert.match(requests[1].prompt, /^Yield failed schemaMode=strict:/);
+  assert.match(requests[2].prompt, /This is not a schema reminder/);
+  assert.equal(requests[2].maxSteps, 1);
+  assert.equal(requests[2].permission, "off");
+  assert.equal(requests[2].session, "mvs_remindcrash3");
+  assert.notEqual(requests[2].continue, true);
+  assert.equal(result.yield.status, "ok");
+  assert.equal(validateWorkerYield(result.yield).ok, true);
+  assert.equal(parseWorkerYield(result.crashRetryExec).ok, true);
+});
+
+test("isHostNativeCrash requires exit 1 plus sqlite/assert/SIGABRT; classifyHostExit stays exit-code only", () => {
+  assert.equal(classifyHostExit(1), "crash");
+  assert.equal(isHostNativeCrash({ exitCode: 1, events: [], stderr: "toolUse ended the stream" }), false);
+  assert.equal(isHostNativeCrash(sqliteCrash("partial {")), true);
+  assert.match(SQLITE_CRASH_STDERR, HOST_NATIVE_CRASH_RE);
+  const snap = buildExecSnapshot(sqliteCrash("partial {"));
+  assert.equal(snap.host_exit, "crash");
+  assert.ok(snap.stderr.length <= SNAPSHOT_STDERR_MAX);
+  assert.match(snap.stderr, /better-sqlite3|Statement::~Statement/);
+});
+
+test("yieldCrashRetryRequest is session XOR continue, same as reminder", () => {
+  const first = sqliteCrash("partial {", "mvs_xorcontinue4");
+  const base = {
+    role: "explorer",
+    contract: { task_id: "T1", objective: "look", acceptance: [], constraints: [] },
+    permission: "smart",
+    cwd: tmp(),
+    prompt: explorerPrompt("add hello()"),
+    maxSteps: ROLE_EXEC_DEFAULTS.explorer.maxSteps,
+  };
+  const retry = yieldCrashRetryRequest(base, first);
+  assert.equal(retry.session, "mvs_xorcontinue4");
+  assert.notEqual(retry.continue, true);
+  assert.equal(retry.maxSteps, YIELD_CRASH_RETRY_MAX_STEPS);
+  assert.equal(retry.permission, YIELD_CRASH_RETRY_PERMISSION);
+  const argv = buildExecArgs(
+    applyRoleDefaults({
+      cwd: base.cwd,
+      prompt: crashRetryPrompt(),
+      role: "explorer",
+      permission: retry.permission,
+      session: retry.session,
+      continue: retry.continue,
+      maxSteps: retry.maxSteps,
+    }),
+  );
+  assert.equal(isLegalHostSessionArgv(argv), true);
+  assert.ok(argv.includes("--session"));
+  assert.equal(argv.includes("--continue"), false);
+  assert.equal(schemaArg(argv), undefined);
+});
+
+test("live plan on hello-pkg reaches PLAN_REVIEW after crash-retry; discover.md has no native stack", async () => {
+  const workspace = copyHelloPkg();
+  const requests = [];
+  const truncated = '{"status":"ok","summary":"hello-pkg src+test","findings":[],"artifacts":["src/index.js"],"x":"Node version may be <18 so';
+  const run = await runPlan({
+    workspace,
+    goal: "export hello() that returns hello and prove the fixture test passes",
+    mcode: new StubMcode(async (req) => {
+      requests.push(req);
+      if (req.role === "explorer" && !(req.prompt || "").includes("tiny yield JSON object")) {
+        return sqliteCrash(truncated, "mvs_planloop05");
+      }
+      if (req.role === "explorer") {
+        return {
+          text: JSON.stringify(TINY_OK_YIELD),
+          events: [{ raw: { type: "exec.result", answer: TINY_OK_YIELD }, type: "exec.result" }],
+          exitCode: 0,
+          rawLines: [],
+        };
+      }
+      return {
+        text: JSON.stringify({
+          status: "ok",
+          summary: "add hello() then npm test",
+          findings: [],
+          artifacts: ["plan.md", "tasks.json"],
+        }),
+        structuredOutput: {
+          data: {
+            tasks: [{ id: "T1", title: "export hello()", role: "builder", depends_on: [] }],
+            acceptance: [{ id: "A1", criterion: "npm test", kind: "test", command: "npm test" }],
+          },
+        },
+        events: [
+          {
+            raw: {
+              type: "result",
+              answer: {
+                status: "ok",
+                summary: "add hello() then npm test",
+                findings: [],
+                artifacts: ["plan.md", "tasks.json"],
+              },
+            },
+            type: "result",
+          },
+        ],
+        exitCode: 0,
+        rawLines: [],
+      };
+    }),
+  });
+  assert.equal(run.phase, "PLAN_REVIEW");
+  assert.ok(requests.some((req) => (req.prompt || "").includes("This is not a schema reminder")));
+  assert.ok(requests.filter((req) => req.role === "explorer").length <= 2);
+
+  const store = new RunStore(workspace);
+  const discover = store.loadEvidence(run.run_id).items.find((item) => item.path.includes("discover.md"));
+  assert.ok(discover);
+  const body = store.readArtifact(run.run_id, discover.path);
+  assert.match(body, /hello-pkg|hello\(\)/);
+  assert.doesNotMatch(body, /dyld/);
+  assert.doesNotMatch(body, /better-sqlite3/);
+  assert.doesNotMatch(body, /RemoveEnvironmentCleanupHook/);
+  assert.doesNotMatch(body, /libsystem_kernel/);
+
+  const firstSnap = JSON.parse(store.readArtifact(run.run_id, "exec-snapshot-discover.json"));
+  assert.ok((firstSnap.stderr || "").length <= SNAPSHOT_STDERR_MAX);
+  const retrySnap = JSON.parse(store.readArtifact(run.run_id, "exec-snapshot-discover-crash-retry.json"));
+  assert.equal(retrySnap.yield_status, "ok");
+  const parsedYield = JSON.parse(store.readArtifact(run.run_id, "yield-discover.json"));
+  assert.equal(validateWorkerYield(parsedYield).ok, true);
+});
+
+test("failed discover after native crash still keeps stacks out of discover.md", async () => {
+  const workspace = copyHelloPkg();
+  const truncated = '{"status":"ok","summary":"Node version may be <18 so';
+  const run = await runPlan({
+    workspace,
+    goal: "do not dump dyld into discover.md",
+    mcode: new StubMcode(async () => sqliteCrash(truncated, "mvs_discoverstack6")),
+  });
+  assert.equal(run.phase, "DISCOVER");
+  assert.equal(run.status, "rejected");
+  const store = new RunStore(workspace);
+  const discover = store.loadEvidence(run.run_id).items.find((item) => item.path.includes("discover.md"));
+  const body = store.readArtifact(run.run_id, discover.path);
+  assert.doesNotMatch(body, /dyld/);
+  assert.doesNotMatch(body, /better-sqlite3/);
+  assert.doesNotMatch(body, /libsystem_kernel/);
+  assert.match(body, /host crash: native sqlite\/assert|Node version may be <18 so|invalid worker yield/);
+  const snap = JSON.parse(store.readArtifact(run.run_id, "exec-snapshot-discover.json"));
+  assert.ok((snap.stderr || "").length <= SNAPSHOT_STDERR_MAX);
 });

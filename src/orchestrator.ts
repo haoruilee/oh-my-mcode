@@ -2,7 +2,15 @@ import { createHash } from "node:crypto";
 import type { Findings, Phase, RunRecord, TaskContract, TaskGraph, TaskItem } from "./types.js";
 import { log, McodeMissingError, nowIso, promptYesNo } from "./util.js";
 import { RunStore } from "./store.js";
-import { ProcessMcode, resolveMcodeInvocation, type ExecRequest, type ExecResult, type McodeClient } from "./mcode.js";
+import {
+  classifyHostExit,
+  isHostNativeCrash,
+  ProcessMcode,
+  resolveMcodeInvocation,
+  type ExecRequest,
+  type ExecResult,
+  type McodeClient,
+} from "./mcode.js";
 import {
   applyRequestedSession,
   emitHostSessionHints,
@@ -13,7 +21,6 @@ import { spawnSubagent, type SpawnResult } from "./subagent.js";
 import { interviewContext } from "./interview.js";
 import {
   coerceJsonValue,
-  collectStderr,
   extractExecResultAnswer,
   looksLikePlannerGraph,
   writeExecPhaseSnapshots,
@@ -224,12 +231,21 @@ function yieldSummary(result: ExecResult, fallback = ""): string {
   return fallback;
 }
 
+function shortHostNote(result: ExecResult): string {
+  const kind = classifyHostExit(result.exitCode);
+  if (isHostNativeCrash(result)) return "host crash: native sqlite/assert abort; yield may be truncated";
+  if (kind === "crash") return `host crash (exit ${result.exitCode})`;
+  if (kind === "invocation") return `host invocation (exit ${result.exitCode})`;
+  return "";
+}
+
 function discoverEvidenceText(result: ExecResult): string {
   const spawned = result as SpawnResult;
   const worker = "yield" in result ? spawned.yield : undefined;
   if (worker?.status === "ok" && worker.summary) return worker.summary;
   const first = spawned.firstExec ?? result;
   const reminder = spawned.reminderExec;
+  const crashRetry = spawned.crashRetryExec;
   const parts: string[] = [];
   if (worker?.summary) parts.push(worker.summary);
   const text = (first.text || result.text || "").trim();
@@ -239,10 +255,15 @@ function discoverEvidenceText(result: ExecResult): string {
     const rendered = typeof answer === "string" ? answer : JSON.stringify(answer);
     if (rendered && rendered !== text && rendered !== worker?.summary) parts.push(rendered.slice(0, 2000));
   }
-  if (reminder) {
-    const stderr = collectStderr(reminder);
-    if (stderr) parts.push(stderr.slice(0, 2000));
+  for (const follow of [reminder, crashRetry]) {
+    if (!follow) continue;
+    const followText = (follow.text || "").trim();
+    if (followText && followText !== text && followText !== worker?.summary) parts.push(followText.slice(0, 800));
+    const note = shortHostNote(follow);
+    if (note) parts.push(note);
   }
+  const firstNote = shortHostNote(first);
+  if (firstNote && !parts.includes(firstNote)) parts.push(firstNote);
   return parts.filter(Boolean).join("\n\n") || "(no explorer yield)";
 }
 
@@ -475,7 +496,7 @@ async function drive(
     );
     await persistExec(store, runId, "discover", result);
     store.writeTextEvidence(runId, "log", "discover.md", discoverEvidenceText(result), {
-      notes: "explorer yield.summary (plus assistant text if yield failed)",
+      notes: "explorer yield.summary / assistant JSON / short crash note; not native stacks",
     });
     const discoverKind = planningYieldKind(result);
     if (discoverKind !== "ok") {
