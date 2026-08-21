@@ -11,7 +11,13 @@ import {
 } from "./session.js";
 import { spawnSubagent, type SpawnResult } from "./subagent.js";
 import { interviewContext } from "./interview.js";
-import { buildExecSnapshot, coerceJsonValue, extractExecResultAnswer, looksLikePlannerGraph } from "./yield.js";
+import {
+  coerceJsonValue,
+  collectStderr,
+  extractExecResultAnswer,
+  looksLikePlannerGraph,
+  writeExecPhaseSnapshots,
+} from "./yield.js";
 import {
   detectProjectCommands,
   findingsFromDeterministic,
@@ -219,16 +225,23 @@ function yieldSummary(result: ExecResult, fallback = ""): string {
 }
 
 function discoverEvidenceText(result: ExecResult): string {
-  const worker = "yield" in result ? (result as SpawnResult).yield : undefined;
+  const spawned = result as SpawnResult;
+  const worker = "yield" in result ? spawned.yield : undefined;
   if (worker?.status === "ok" && worker.summary) return worker.summary;
+  const first = spawned.firstExec ?? result;
+  const reminder = spawned.reminderExec;
   const parts: string[] = [];
   if (worker?.summary) parts.push(worker.summary);
-  const text = (result.text || "").trim();
+  const text = (first.text || result.text || "").trim();
   if (text && text !== worker?.summary) parts.push(text.slice(0, 4000));
-  const answer = extractExecResultAnswer(result);
+  const answer = extractExecResultAnswer(first);
   if (answer !== undefined) {
     const rendered = typeof answer === "string" ? answer : JSON.stringify(answer);
     if (rendered && rendered !== text && rendered !== worker?.summary) parts.push(rendered.slice(0, 2000));
+  }
+  if (reminder) {
+    const stderr = collectStderr(reminder);
+    if (stderr) parts.push(stderr.slice(0, 2000));
   }
   return parts.filter(Boolean).join("\n\n") || "(no explorer yield)";
 }
@@ -243,15 +256,9 @@ async function persistExec(store: RunStore, runId: string, phase: string, result
     });
     store.mergeFileHashes(runId, worker.file_hashes);
   }
-  const snapshot = buildExecSnapshot(result, {
+  writeExecPhaseSnapshots(store, runId, phase, result, {
     hashes: worker?.file_hashes || store.loadFileHashes(runId),
     yieldStatus: worker?.status ?? null,
-  });
-  store.writeArtifact(runId, `exec-snapshot-${phase}.json`, `${JSON.stringify(snapshot, null, 2)}\n`);
-  store.writeTextEvidence(runId, "log", `exec-snapshot-${phase}.json`, JSON.stringify(snapshot), {
-    command: `mcode exec (${phase})`,
-    notes: "typed exec snapshot (assistant text / exec.result.answer); not raw JSONL",
-    exit_code: result.exitCode,
   });
 }
 

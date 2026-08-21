@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { ExecRequest, ExecResult, McodeClient, StreamEvent } from "./mcode.js";
-import { applyRoleDefaults } from "./mcode.js";
+import { applyRoleDefaults, sessionXorContinue } from "./mcode.js";
 import type { RunRecord } from "./types.js";
 import type { RunStore } from "./store.js";
 import { execWithRepair } from "./tool-repair.js";
@@ -175,13 +175,29 @@ export function applyHostSession(store: RunStore, runId: string, req: ExecReques
     run.host_session_source !== "synthesized" &&
     !isSynthesizedSessionToken(run.host_session_id || "");
   if (reusable && run.host_session_id) {
-    next.session = run.host_session_id;
-    if (run.host_continue) next.continue = true;
+    // Prefer --session <mvs_>. Host 0.2.1 rejects --session AND --continue (invocation, exit 2).
+    const legal = sessionXorContinue({ session: run.host_session_id });
+    next.session = legal.session;
+    delete next.continue;
     return next;
   }
-  // First turn (and leftover synthesized ids): no fake --session / --continue.
-  // User-requested --continue is host_continue without source=synthesized.
-  if (run.host_continue && run.host_session_source !== "synthesized") next.continue = true;
+  // First turn (and leftover synthesized ids): no fake --session.
+  // --continue is user-requested, or a reminder that has no mvs_ yet.
+  const legal = sessionXorContinue({
+    session: next.session && !isSynthesizedSessionToken(next.session) ? next.session : undefined,
+    continue:
+      Boolean(next.continue) || Boolean(run.host_continue && run.host_session_source !== "synthesized"),
+  });
+  if (legal.session) {
+    next.session = legal.session;
+    delete next.continue;
+  } else if (legal.continue) {
+    delete next.session;
+    next.continue = true;
+  } else {
+    delete next.session;
+    delete next.continue;
+  }
   return next;
 }
 

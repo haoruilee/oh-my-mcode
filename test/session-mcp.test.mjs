@@ -92,6 +92,25 @@ test("--no-session keeps session undefined on every exec", async () => {
   assert.ok(!store.loadEvents(run.run_id).some((event) => event.type === "host_session_bound"));
 });
 
+test("bound host session plus host_continue does not send both --session and --continue", () => {
+  const workspace = project();
+  const store = new RunStore(workspace);
+  const run = store.create("xor session");
+  store.patchRun(run.run_id, {
+    host_session_id: "mvs_fa1108f7161b4c189d22ce2f9508e959",
+    host_continue: true,
+    host_session_source: "host",
+  });
+  const next = applyHostSession(
+    store,
+    run.run_id,
+    { cwd: workspace, prompt: "pong", role: "explorer", permission: "off", continue: true },
+    {},
+  );
+  assert.equal(next.session, "mvs_fa1108f7161b4c189d22ce2f9508e959");
+  assert.notEqual(next.continue, true);
+});
+
 test("leftover synthesized omm_ session is not sent to the host", () => {
   const workspace = project();
   const store = new RunStore(workspace);
