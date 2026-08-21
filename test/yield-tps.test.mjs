@@ -296,7 +296,23 @@ test("validateWorkerYield is strict", () => {
     artifacts: [],
     prose: "nope",
   });
-  assert.equal(extra.ok, false);
+  assert.equal(extra.ok, true, "unknown yield keys are ignored, not a fail");
+  assert.equal(extra.ok && extra.data.summary, "x");
+  assert.equal(extra.ok && !("prose" in extra.data), true);
+  const noPath = validateWorkerYield({
+    status: "ok",
+    summary: "x",
+    findings: [],
+    artifacts: [{ role: "manifest" }],
+  });
+  assert.equal(noPath.ok, false);
+  const numbered = validateWorkerYield({
+    status: "ok",
+    summary: "x",
+    findings: [],
+    artifacts: [1],
+  });
+  assert.equal(numbered.ok, false);
 });
 
 test("mcode 0.2.1 live yield fixture parses exec.result.answer", () => {
