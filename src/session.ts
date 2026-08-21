@@ -21,7 +21,30 @@ export function synthesizeSessionToken(runId: string): string {
 
 /** Tokens we used to invent before the host returned a session id. Do not send these. */
 export function isSynthesizedSessionToken(id: string): boolean {
-  return id.startsWith("omm_run_");
+  return id.startsWith("omm_run_") || id.startsWith("omm_");
+}
+
+/** Live 0.2.1 host session ids look like `mvs_<hex>`. */
+export const HOST_SESSION_ID_RE = /\bmvs_[A-Za-z0-9]+\b/;
+export const HOST_SESSION_REMINDER_RE = /YOUR SESSION ID:\s*(mvs_[A-Za-z0-9]+)/i;
+
+export function decodeHostCursor(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+export function extractMvsSessionId(text: string): string | undefined {
+  const decoded = decodeHostCursor(text);
+  const reminder = decoded.match(HOST_SESSION_REMINDER_RE);
+  if (reminder?.[1] && !isSynthesizedSessionToken(reminder[1])) return reminder[1];
+  const fromCursor = decoded.match(/(?:sse1:)?session(?::|%3A)(mvs_[A-Za-z0-9]+)/i);
+  if (fromCursor?.[1] && !isSynthesizedSessionToken(fromCursor[1])) return fromCursor[1];
+  const found = decoded.match(HOST_SESSION_ID_RE);
+  if (found?.[0] && !isSynthesizedSessionToken(found[0])) return found[0];
+  return undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -39,6 +62,10 @@ function stringId(value: unknown): string | undefined {
  * accept `id` only on exec.result / metadata (not random event ids).
  */
 export function extractHostSessionId(result: ExecResult): string | undefined {
+  if (result.text) {
+    const reminder = decodeHostCursor(result.text).match(HOST_SESSION_REMINDER_RE);
+    if (reminder?.[1] && !isSynthesizedSessionToken(reminder[1])) return reminder[1];
+  }
   const blobs: unknown[] = [
     ...result.events.map((event) => event.raw),
     ...result.rawLines.map((line) => {
@@ -70,7 +97,16 @@ function findSessionId(value: unknown, depth = 0, allowBareId = false): string |
 
   for (const key of ["session", "session_id", "sessionId", "host_session_id"]) {
     const found = stringId(rec[key]);
-    if (found) return found;
+    if (found && !isSynthesizedSessionToken(found)) return found;
+  }
+  if (typeof rec.cursor === "string") {
+    const fromCursor = extractMvsSessionId(rec.cursor);
+    if (fromCursor) return fromCursor;
+  }
+  for (const key of ["content", "text", "thinking", "answer"]) {
+    if (typeof rec[key] !== "string") continue;
+    const reminder = decodeHostCursor(rec[key]).match(HOST_SESSION_REMINDER_RE);
+    if (reminder?.[1] && !isSynthesizedSessionToken(reminder[1])) return reminder[1];
   }
   if (allowBareId) {
     const found = stringId(rec.id);

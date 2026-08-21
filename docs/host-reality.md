@@ -83,6 +83,15 @@ Default argv therefore omits `--output-schema`. Schemas stay on disk. Yield is v
 
 On the same 0.2.1 host, `--timeout` is parsed by `chm`: `/^(\d+)(ms|s|m|h)?$/i`. A bare integer is **milliseconds**, not seconds. After PR #9, `oh-my-mcode plan` bound a real session (`mvs_…`, `host_session_source: host`) then discover failed with **exit 6** (`Sw.timeout = 6`) because we sent `--timeout 180` for a 3-minute explorer default (180ms). Live first_token_ms was ~6030, then timeout. `doctor --smoke` omits `--timeout` and succeeded in 18s; `mcode exec --timeout 45s` succeeded. Worker argv therefore sends a unit suffix (`180s`), never a bare integer. Role defaults stay milliseconds internally.
 
+Later the same day (2026-08-21), a live Mac run against 0.2.1 showed more host facts we now lock in tests:
+
+- `--output-schema` is a JSON object string, not a path. Live host still exits **70** if we pass it. Default: do not pass it.
+- `--max-steps` is a positive integer. `--permission` is `ask|smart|full|off` (host default `ask`). Role defaults must reach argv.
+- Documented host exits: success=0, invocation=2, config=3, runtime=4, blocked=5, timeout=6, limit=7, internal=70, cancelled=130. Exit **1** has been observed on crash / incomplete stream; it is not timeout.
+- Stream-json: `{type:"delta", role:"assistant", content:"chunk"}` and/or `thinking`; `{type:"message", message:{role, content, finishReason, usage}}`. Session id also lives in `cursor` as `sse1:session%3Amvs_…` (URL-encoded) and in `YOUR SESSION ID: mvs_…`. Usage lives on `message.usage` and `exec.result` (`durationMs`, `model`). A probe that gets no usage is **unmeasured**.
+- Explorer writing a schema-valid yield as `delta.content` chunks can die mid-JSON (exit 1). We stitch assistant deltas into `result.text` and persist a typed snapshot. User-role messages are ignored so the prompt example cannot win a greedy `{...}` match. The one yield reminder reuses `--session <mvs_>`.
+- An empty workspace (only `.minimax/runs`) is a dead fixture. Greenfield is `status: ok` with note findings, not `blocked`. `blocked` is missing permission or missing tools. Plan tests use `test/fixtures/hello-pkg`.
+
 Max mode can be driven headless later by `mcode exec` plus a prompt that loads the `max` skill. That is not a second product CLI.
 
 ```bash

@@ -5,6 +5,7 @@ import { McodeMissingError } from "./util.js";
 import { explorerPrompt } from "./prompts.js";
 import { applyRequestedSession, emitHostSessionHints } from "./session.js";
 import { spawnSubagent } from "./subagent.js";
+import { buildExecSnapshot } from "./yield.js";
 import { loadWorkflow } from "./workflows.js";
 
 export interface ResearchOptions {
@@ -58,8 +59,11 @@ export async function runResearch(opts: ResearchOptions): Promise<RunRecord> {
   const note = `# Research\n\nTopic: ${run.goal}\n\nThis run is DISCOVER-only. No builder. No product edits.\n\n## Explorer\n\n${result.yield.summary || "(no explorer yield)"}\n`;
   store.writeArtifact(run.run_id, "research.md", note);
   store.writeTextEvidence(run.run_id, "log", "research.md", note, { notes: "research" });
-  store.writeTextEvidence(run.run_id, "log", "mcode-discover.jsonl", result.rawLines.join("\n") || result.text || "(empty)", {
+  const snapshot = buildExecSnapshot(result, { yieldStatus: result.yield.status, hashes: result.yield.file_hashes });
+  store.writeArtifact(run.run_id, "exec-snapshot-discover.json", `${JSON.stringify(snapshot, null, 2)}\n`);
+  store.writeTextEvidence(run.run_id, "log", "exec-snapshot-discover.json", JSON.stringify(snapshot), {
     command: "mcode exec (discover)",
+    notes: "typed exec snapshot (assistant text / exec.result.answer); not raw JSONL",
     exit_code: result.exitCode,
   });
   store.appendEvent(run.run_id, "research_completed", { role: "explorer", builder: false });

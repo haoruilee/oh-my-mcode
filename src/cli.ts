@@ -59,7 +59,7 @@ Options:
   --commit               ship: local commit if git is clean enough; push only then
   --package-only         doctor: skip mcode-on-PATH (CI)
   --smoke                doctor: one tiny mcode exec (pong)
-  --tps                  doctor: real host tok/s (unmeasured if stub)
+  --tps                  doctor: real host tok/s (unmeasured if stub or usage omitted)
   --allow-stub           doctor --tps: allow fake-mcode (still unmeasured)
   --yes                  install: non-interactive
   --answers FILE         interview: skip prompts, load JSON

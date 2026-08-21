@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { packageRoot, parseJsonObject } from "./util.js";
-import type { FindingSeverity } from "./types.js";
+import type { FindingSeverity, UsageTotals } from "./types.js";
 import type { ExecResult } from "./mcode.js";
 
 export const YIELD_STATUSES = ["ok", "blocked", "failed"] as const;
@@ -115,24 +115,65 @@ export function validateWorkerYield(value: unknown): { ok: true; data: WorkerYie
   };
 }
 
+function parseObjectAt(text: string, start: number): unknown {
+  if (text[start] !== "{") return undefined;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inStr) {
+      if (esc) {
+        esc = false;
+        continue;
+      }
+      if (ch === "\\") {
+        esc = true;
+        continue;
+      }
+      if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') {
+      inStr = true;
+      continue;
+    }
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          return JSON.parse(text.slice(start, i + 1));
+        } catch {
+          return undefined;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
 function extractJsonCandidate(text: string): unknown {
   const fence = text.match(/```json\s*([\s\S]*?)```/i);
   if (fence?.[1]) {
     try {
-      return JSON.parse(fence[1]);
+      const parsed = JSON.parse(fence[1]);
+      if (looksLikeYield(parsed) && !looksLikePlannerGraph(parsed)) return parsed;
     } catch {
       // fall through
     }
   }
   const rec = parseJsonObject(text, {});
-  if (Object.keys(rec).length > 0) return rec;
-  const match = text.match(/(\{[\s\S]*\})/);
-  if (!match?.[1]) return undefined;
-  try {
-    return JSON.parse(match[1]);
-  } catch {
-    return undefined;
+  if (looksLikeYield(rec) && !looksLikePlannerGraph(rec)) return rec;
+  const candidates: unknown[] = [];
+  if (Object.keys(rec).length > 0) candidates.push(rec);
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] !== "{") continue;
+    const parsed = parseObjectAt(text, i);
+    if (parsed !== undefined) candidates.push(parsed);
   }
+  const yields = candidates.filter((item) => looksLikeYield(item) && !looksLikePlannerGraph(item));
+  return yields.at(-1) ?? candidates[0];
 }
 
 /** Parse host `exec.result.answer` (object or JSON string) or assistant text. */
@@ -184,6 +225,46 @@ export function extractStructuredYield(result: ExecResult): unknown {
   const fromText = extractJsonCandidate(result.text || "");
   if (fromText !== undefined) candidates.push(fromText);
   return candidates.find((item) => looksLikeYield(item) && !looksLikePlannerGraph(item));
+}
+
+export function extractExecResultAnswer(result: ExecResult): unknown {
+  for (const event of result.events || []) {
+    const rec = eventRecord(event.raw);
+    if (!rec) continue;
+    const answer = execResultAnswer(rec);
+    if (answer !== undefined) return answer;
+    if (rec.result && typeof rec.result === "object") {
+      const nested = execResultAnswer(rec.result as Record<string, unknown>);
+      if (nested !== undefined) return nested;
+    }
+  }
+  return undefined;
+}
+
+export interface ExecSnapshot {
+  assistant_text: string;
+  exec_result_answer?: unknown;
+  file_hashes?: Record<string, string>;
+  exit_code: number;
+  usage?: UsageTotals;
+  yield_status?: YieldStatus | null;
+}
+
+/** Typed evidence. Not raw host JSONL. */
+export function buildExecSnapshot(
+  result: ExecResult,
+  extra: { hashes?: Record<string, string>; yieldStatus?: YieldStatus | null } = {},
+): ExecSnapshot {
+  const answer = extractExecResultAnswer(result);
+  const snapshot: ExecSnapshot = {
+    assistant_text: (result.text || "").trim(),
+    exit_code: result.exitCode,
+    yield_status: extra.yieldStatus ?? null,
+  };
+  if (answer !== undefined) snapshot.exec_result_answer = answer;
+  if (extra.hashes && Object.keys(extra.hashes).length > 0) snapshot.file_hashes = extra.hashes;
+  if (result.usage) snapshot.usage = result.usage;
+  return snapshot;
 }
 
 export function extractStructuredOutput(events: { raw?: unknown }[]): { data?: unknown } | undefined {

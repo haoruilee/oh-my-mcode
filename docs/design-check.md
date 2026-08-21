@@ -147,6 +147,17 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `plan` / `team`.
 8. **Codex-as-platform fit?** We did not add hashline, invent TPS, or npm publish.
 
+## 14. Host contract honesty after the 2026-08-21 live 0.2.1 Mac run
+
+1. **Verified delivery?** Yes — we locked the live argv/stream contract in unit tests and stopped discarding assistant text. `formatHostTimeout` emits a unit (`180s`). Default exec still omits `--output-schema`. Role `--max-steps` / `--permission` reach argv. Explorer greenfield is `ok` + notes, not `blocked`. Schema-valid `blocked` is a valid yield (stop DISCOVER/PLAN with `blocked_worker_yield`, never "invalid worker yield"). `doctor --tps` prints `unmeasured` when `message.usage` is missing.
+2. **Harness not prompt pack?** Yes — stitch / session / snapshot / TPS live in TypeScript. Role files stayed short contracts.
+3. **One core, many surfaces?** Same `buildExecArgs` / `collectAssistantText` / `extractHostSessionId` / `parseWorkerYield` for CLI and MCP.
+4. **Subagents are workers not trees?** Unchanged. One `mcode exec` per worker. The one yield reminder reuses the extracted `mvs_` `--session`.
+5. **MiniMax-native?** Yes — `delta.content` stitch, `cursor: sse1:session%3Amvs_…`, `YOUR SESSION ID: mvs_…`, `message.usage`, `exec.result.answer`. No synthesized `omm_run_…`.
+6. **Host honesty?** **Pass, enforced.** We do not depend on host `--output-schema`. We do not invent tok/s. We do not dump raw JSONL into the next prompt. We persist a typed snapshot (assistant text / `exec.result.answer` / hashes), not the raw stream. Exit 1 is crash / incomplete stream, not timeout. Plan tests use `test/fixtures/hello-pkg`, not an empty `.minimax/runs` dir.
+7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `plan` / `team`.
+8. **Codex-as-platform fit?** Typed yield and evidence stay harness concerns. We did not add hashline, hooks, `/max`, or npm publish.
+
 ## Failures we refused
 
 - Did not add a second JSON-RPC next to MCP.

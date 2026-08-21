@@ -11,7 +11,7 @@ import {
 } from "./session.js";
 import { spawnSubagent, type SpawnResult } from "./subagent.js";
 import { interviewContext } from "./interview.js";
-import { coerceJsonValue, looksLikePlannerGraph } from "./yield.js";
+import { buildExecSnapshot, coerceJsonValue, extractExecResultAnswer, looksLikePlannerGraph } from "./yield.js";
 import {
   detectProjectCommands,
   findingsFromDeterministic,
@@ -77,9 +77,12 @@ function plannerGraphFromResult(result: ExecResult): unknown {
   return undefined;
 }
 
-function yieldNotOk(result: ExecResult): boolean {
+function planningYieldKind(result: ExecResult): "ok" | "blocked" | "failed" {
   const worker = "yield" in result ? (result as SpawnResult).yield : undefined;
-  return !worker || worker.status !== "ok";
+  if (!worker) return "failed";
+  if (worker.status === "ok") return "ok";
+  if (worker.status === "blocked") return "blocked";
+  return "failed";
 }
 
 function rejectPlanningYield(
@@ -88,17 +91,23 @@ function rejectPlanningYield(
   phase: "DISCOVER" | "PLAN",
   result: ExecResult,
   opts: OrchestratorOptions,
+  kind: "blocked" | "failed",
 ): RunRecord {
   const worker = "yield" in result ? (result as SpawnResult).yield : undefined;
-  store.setPhase(runId, phase, "rejected");
+  const status = kind === "blocked" ? "blocked" : "rejected";
+  const reason = kind === "blocked" ? "blocked_worker_yield" : "failed_worker_yield";
+  store.setPhase(runId, phase, status);
   store.appendEvent(runId, "run_rejected", {
-    reason: "failed_worker_yield",
+    reason,
     phase,
     status: worker?.status,
     summary: worker?.summary,
     exit_code: result.exitCode,
   });
-  emit(opts, `${phase} failed: ${worker?.summary || "worker yield failed"} (exit ${result.exitCode})`);
+  emit(
+    opts,
+    `${phase} ${kind}: ${worker?.summary || (kind === "blocked" ? "worker yield blocked" : "worker yield failed")} (exit ${result.exitCode})`,
+  );
   store.evidenceReport(runId);
   const finished = store.load(runId);
   emitHostSessionHints(finished, (line) => emit(opts, line));
@@ -209,6 +218,21 @@ function yieldSummary(result: ExecResult, fallback = ""): string {
   return fallback;
 }
 
+function discoverEvidenceText(result: ExecResult): string {
+  const worker = "yield" in result ? (result as SpawnResult).yield : undefined;
+  if (worker?.status === "ok" && worker.summary) return worker.summary;
+  const parts: string[] = [];
+  if (worker?.summary) parts.push(worker.summary);
+  const text = (result.text || "").trim();
+  if (text && text !== worker?.summary) parts.push(text.slice(0, 4000));
+  const answer = extractExecResultAnswer(result);
+  if (answer !== undefined) {
+    const rendered = typeof answer === "string" ? answer : JSON.stringify(answer);
+    if (rendered && rendered !== text && rendered !== worker?.summary) parts.push(rendered.slice(0, 2000));
+  }
+  return parts.filter(Boolean).join("\n\n") || "(no explorer yield)";
+}
+
 async function persistExec(store: RunStore, runId: string, phase: string, result: ExecResult): Promise<void> {
   const worker = "yield" in result ? (result as SpawnResult).yield : undefined;
   if (worker) {
@@ -219,8 +243,14 @@ async function persistExec(store: RunStore, runId: string, phase: string, result
     });
     store.mergeFileHashes(runId, worker.file_hashes);
   }
-  store.writeTextEvidence(runId, "log", `mcode-${phase}.jsonl`, result.rawLines.join("\n") || "(jsonl not dumped into prompts)", {
+  const snapshot = buildExecSnapshot(result, {
+    hashes: worker?.file_hashes || store.loadFileHashes(runId),
+    yieldStatus: worker?.status ?? null,
+  });
+  store.writeArtifact(runId, `exec-snapshot-${phase}.json`, `${JSON.stringify(snapshot, null, 2)}\n`);
+  store.writeTextEvidence(runId, "log", `exec-snapshot-${phase}.json`, JSON.stringify(snapshot), {
     command: `mcode exec (${phase})`,
+    notes: "typed exec snapshot (assistant text / exec.result.answer); not raw JSONL",
     exit_code: result.exitCode,
   });
 }
@@ -437,11 +467,12 @@ async function drive(
       opts,
     );
     await persistExec(store, runId, "discover", result);
-    store.writeTextEvidence(runId, "log", "discover.md", yieldSummary(result, "(no explorer yield)"), {
-      notes: "explorer yield.summary",
+    store.writeTextEvidence(runId, "log", "discover.md", discoverEvidenceText(result), {
+      notes: "explorer yield.summary (plus assistant text if yield failed)",
     });
-    if (yieldNotOk(result)) {
-      return rejectPlanningYield(store, runId, "DISCOVER", result, opts);
+    const discoverKind = planningYieldKind(result);
+    if (discoverKind !== "ok") {
+      return rejectPlanningYield(store, runId, "DISCOVER", result, opts, discoverKind);
     }
     run = store.load(runId);
   }
@@ -465,8 +496,9 @@ async function drive(
       opts,
     );
     await persistExec(store, runId, "plan", result);
-    if (yieldNotOk(result)) {
-      return rejectPlanningYield(store, runId, "PLAN", result, opts);
+    const planKind = planningYieldKind(result);
+    if (planKind !== "ok") {
+      return rejectPlanningYield(store, runId, "PLAN", result, opts, planKind);
     }
     store.writePlan(runId, planMarkdown(run.goal, discoverBody, yieldSummary(result, "planner yield")));
     store.writeTasks(runId, tasksFromPlanner(runId, run.goal, result));

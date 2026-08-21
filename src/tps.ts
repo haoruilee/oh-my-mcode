@@ -86,7 +86,8 @@ export function tpsFromExec(result: ExecResult, prompt: string, opts: { stub: bo
       constraints: ["One task only", "Do not mark Accepted"],
     }),
   );
-  const unmeasured = opts.stub && !opts.allowStub;
+  const hasTokenUsage = inputTokens != null || outputTokens != null;
+  const unmeasured = !hasTokenUsage || (opts.stub && !opts.allowStub);
   return {
     host_binary: mcodeExists() ? resolveMcodeInvocation().command : null,
     host_version: hostVersion(),
