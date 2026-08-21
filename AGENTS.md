@@ -112,6 +112,8 @@ Observed on **mcode 0.2.1** (2026-08-21), then rematched:
 - Node 24 + better-sqlite3 can GC-abort (`Statement::~Statement`). Live rematch used Node 22, then rebuilt the addon back to 24. That is host reality — not “we cannot use Node 22”.
 - Rematch on a copy of `test/fixtures/hello-pkg`: `plan` reached PLAN_REVIEW; `max --no-llm-verify` reached ACCEPT / `accepted` and wrote `hello()`.
 
+Host ceilings (not a product): a ~20-word `mcode exec` still pays **17–20k input tokens** (host system/tools), and Node 24 + better-sqlite3 can GC-abort. We shrink worker prompts and lock the argv/stream/yield contract. Hashline, LSP, or a browser tool would be changing `mcode`, not catching Oh-My-Pi / Oh-My-OpenCode. This package stays the verified-delivery layer on MiniMax Code. Hero stays `oh-my-mcode max`.
+
 ## QA
 
 `npm test` is the **hermetic gate**. Typecheck is **not** QA. `bun test` is not a command here.

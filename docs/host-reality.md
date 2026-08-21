@@ -95,6 +95,8 @@ Later the same day (2026-08-21), a live Mac run against 0.2.1 showed more host f
 - Rematch (2026-08-21, mcode 0.2.1, copy of `test/fixtures/hello-pkg`): `oh-my-mcode plan` reached PLAN_REVIEW; `oh-my-mcode max --no-llm-verify` reached ACCEPT / `accepted` and wrote `hello()`.
 - An empty workspace (only `.minimax/runs`) is a dead fixture. Greenfield is `status: ok` with note findings, not `blocked`. `blocked` is missing permission or missing tools. Plan tests use `test/fixtures/hello-pkg`.
 
+Host ceilings (not a product). A ~20-word `mcode exec` still pays **17–20k input tokens** — almost all of that is host system/tools (`message.usage` fixture: 16816 input / 261 output). Node 24 + better-sqlite3 can GC-abort (`Statement::~Statement`). Those are `mcode` limits. We shrink prompts and lock the argv/stream/yield contract. Hashline, LSP, or a browser tool would be changing the host, not catching Oh-My-Pi / Oh-My-OpenCode. This package stays the verified-delivery layer. Hero stays `oh-my-mcode max`.
+
 Max mode can be driven headless later by `mcode exec` plus a prompt that loads the `max` skill. That is not a second product CLI.
 
 ```bash

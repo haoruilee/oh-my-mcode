@@ -120,6 +120,8 @@ export async function runDeterministicVerify(
             : []),
         ];
 
+  const writtenEvidence: string[] = [];
+
   if (toRun.length === 0) {
     acceptance.push({
       id: "A1",
@@ -136,6 +138,7 @@ export async function runDeterministicVerify(
     store.writeTextEvidence(runId, "log", "no-test-command.txt", `detect=${detected.source}\n`, {
       notes: "no automated command",
     });
+    writtenEvidence.push("evidence/no-test-command.txt");
     return { acceptance, findings, commands };
   }
 
@@ -149,6 +152,7 @@ export async function runDeterministicVerify(
       command: row.command,
       exit_code: result.exitCode,
     });
+    writtenEvidence.push(`evidence/${rel}`);
     const pass = result.exitCode === 0;
     acceptance.push({
       id,
@@ -169,9 +173,18 @@ export async function runDeterministicVerify(
     }
   }
 
+  const justWritten = new Set(writtenEvidence);
   const staleEvidence = store.staleEvidence(runId);
+  const staleJustWritten = staleEvidence.filter((item) => justWritten.has(item.path));
+  if (staleJustWritten.length > 0) {
+    store.refreshEvidenceHashes(
+      runId,
+      staleJustWritten.map((item) => item.path),
+    );
+  }
+  const leftoverEvidence = staleEvidence.filter((item) => !justWritten.has(item.path));
   const staleWorkspace = staleFileHashes(workspace, store.loadFileHashes(runId));
-  for (const stale of [...staleEvidence, ...staleWorkspace]) {
+  for (const stale of [...leftoverEvidence, ...staleWorkspace]) {
     findings.push({
       id: `F${findings.length + 1}`,
       severity: "blocker",

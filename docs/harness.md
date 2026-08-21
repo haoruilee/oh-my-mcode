@@ -57,7 +57,7 @@ Flat team is one `{ context, tasks[] }` packet. `context` is injected into every
 
 ## Content hashes
 
-Evidence records store sha256 of artifact bytes. Verifier compares recorded hashes to live files. Stale hash → re-run deterministic tests and refuse Accept. This is the hashline *idea* (reject a stale anchor), not their edit language.
+Evidence records store sha256 of artifact bytes. Verifier compares recorded hashes to live files. Rewriting the same evidence path (VERIFY's `A1-test.log`) upserts that index row — a just-rewritten test log is not a REPAIR. Stale **workspace** source hashes still trigger one deterministic re-run and refuse Accept. This is the hashline *idea* (reject a stale anchor), not their edit language.
 
 Inspect/MCP can address store files as `run://<run_id>/findings` (and `evidence`, `events`, `plan`, `summary`).
 

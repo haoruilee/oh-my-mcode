@@ -235,6 +235,9 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 - Did not claim official marketplace listing or open a community-registry PR.
 - Did not invent a WorkerYield or source-grep `hello-repair`.
 - Did not npm publish.
+- Did not treat a rewritten `evidence/A1-test.log` as a builder REPAIR. Index upserts by path; only leftover / workspace hashes stay blockers.
+- Did not drop the one-rerun on stale workspace source hashes.
+- Did not pretend Hashline / LSP / browser would catch Oh-My-Pi / Oh-My-OpenCode. Those are host ceilings.
 
 ## 19. Root AGENTS.md (contributor operating manual)
 
@@ -268,3 +271,14 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 6. **Host honesty?** Yes — job is named hermetic; no live `mcode`; no MiniMax secrets. `docs/marketplace.md` does not claim we are listed. Community registry is optional and separate; this cut does not open a PR there. `evals/tasks/fail-then-repair` remains the `.repaired` stub.
 7. **Hero stays `max`?** Yes.
 8. **Codex-as-platform fit?** CI is a gate, not a second loop. No production ΔY. No `/max`, hooks, or Sisyphus.
+
+## 22. Evidence index upsert (rewritten test log is not a REPAIR)
+
+1. **Verified delivery?** Yes — Accept still requires live evidence bytes matching the current index row. Rewriting `evidence/A1-test.log` updates that row's sha256 instead of appending a ghost row. Workspace source hashes staying stale still refuse Accept. A builder is not sent to "fix" a harness index lie.
+2. **Harness not prompt pack?** Yes — `addEvidence` / `staleEvidence` / `refreshEvidenceHashes` are TypeScript. Role files unchanged. No Hashline / LSP / browser.
+3. **One core, many surfaces?** Same `RunStore` for CLI and MCP. `scripts/run-store.mjs` upserts the same way so TUI skills cannot recreate the lie.
+4. **Subagents are workers not trees?** N/A — hashes do not spawn.
+5. **MiniMax-native?** Yes — no `[PATH#TAG]`, no PUT/CUT. Content-hash stale-reject stays in `src/hash.ts` + store. Events still append (`test_ran` per write).
+6. **Host honesty?** Yes — 17–20k input tax and Node 24 sqlite abort are documented as `mcode` ceilings, not something we catch by becoming Oh-My-Pi / Oh-My-OpenCode. One re-run remains for stale **workspace** hashes only.
+7. **Hero stays `max`?** Yes.
+8. **Codex-as-platform fit?** Evidence records remain store artifacts. EQ (`events.jsonl`) still appends. The index upserts. Stale workspace hash is still an approval failure.

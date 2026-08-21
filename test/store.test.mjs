@@ -54,3 +54,38 @@ test("Accepted requires all-pass acceptance and evidence", () => {
   assert.equal(written.run.status, "accepted");
   assert.equal(written.run.phase, "ACCEPT");
 });
+
+test("rewritten evidence path upserts; staleEvidence stays empty; Accept still allowed", () => {
+  const dir = tmp();
+  const store = new RunStore(dir);
+  const run = store.create("rewrite the same test log");
+  const first = store.writeTextEvidence(run.run_id, "test", "A1-test.log", "Command failed: npm test\n", {
+    command: "npm test",
+    exit_code: 1,
+  });
+  const second = store.writeTextEvidence(run.run_id, "test", "A1-test.log", "ok\n", {
+    command: "npm test",
+    exit_code: 0,
+  });
+  const index = store.loadEvidence(run.run_id);
+  const rows = index.items.filter((item) => item.path === "evidence/A1-test.log");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, first.id);
+  assert.equal(rows[0].id, second.id);
+  assert.equal(rows[0].exit_code, 0);
+  assert.ok(rows[0].sha256);
+  assert.notEqual(rows[0].sha256, first.sha256);
+  assert.deepEqual(store.staleEvidence(run.run_id), []);
+  const testEvents = store.loadEvents(run.run_id).filter((event) => event.type === "test_ran");
+  assert.equal(testEvents.length, 2);
+  const written = store.writeFindings(run.run_id, {
+    run_id: run.run_id,
+    verdict: "accepted",
+    checked_at: new Date().toISOString(),
+    summary: "rewritten log is current",
+    acceptance: [{ id: "A1", criterion: "npm test", result: "pass", evidence: ["evidence/A1-test.log"] }],
+    findings: [],
+  });
+  assert.equal(written.run.status, "accepted");
+  assert.equal(written.run.phase, "ACCEPT");
+});
