@@ -30,9 +30,10 @@ Goal: ${goal}
 ${packetBlock("Interview path", interview ? "interview.md" : "")}
 Allowed: read/search. Do not edit product files. Do not spawn.
 Return paths, test/build commands, top risks.
+Tiny repo / hello-pkg: read package.json, src/index.js, and test/hello.test.js, then stop. Do not keep searching.
 Greenfield / empty product tree: yield status ok with note findings (no src, suggested new files, test/build commands). Do not use status blocked because the repo is empty.
 blocked is only for missing permission or missing tools.
-Once you have paths, commands, and risks, the LAST message is ONLY the yield JSON. No more tools. Do not hash files unless the yield already includes file_hashes and you are done.
+Once you have paths, commands, and risks, the LAST message is ONLY the tiny yield JSON. No more tools. Do not hash files unless the yield already includes file_hashes and you are done.
 ${yieldContractLine()}`;
 }
 

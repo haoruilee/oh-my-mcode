@@ -151,6 +151,27 @@ export function classifyHostExit(code: number): HostExitKind | "unknown" {
   return "unknown";
 }
 
+/**
+ * Live mcode 0.2.1 / Node 24.19.0: better-sqlite3 GC abort (`Statement::~Statement`,
+ * `RemoveEnvironmentCleanupHook` assert `(env) != nullptr`, SIGABRT).
+ * Exit 1 alone is crash / incomplete. Native-crash retry requires these signatures.
+ */
+export const HOST_NATIVE_CRASH_RE =
+  /better-sqlite3|RemoveEnvironmentCleanupHook|Statement::~Statement|SIGABRT|\(env\)\s*!=\s*nullptr/i;
+
+export function hostStderrText(result: Pick<ExecResult, "stderr" | "events">): string {
+  if (result.stderr?.trim()) return result.stderr.trim();
+  return (result.events || [])
+    .filter((event) => event.type === "stderr")
+    .map((event) => (event.text || "").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function isHostNativeCrash(result: Pick<ExecResult, "exitCode" | "stderr" | "events">): boolean {
+  return classifyHostExit(result.exitCode) === "crash" && HOST_NATIVE_CRASH_RE.test(hostStderrText(result));
+}
+
 export const ROLE_EXEC_DEFAULTS: Record<
   Role,
   { permission?: Permission; timeoutMs: number; maxSteps: number }

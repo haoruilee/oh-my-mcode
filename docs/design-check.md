@@ -180,6 +180,17 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `plan` / `team`.
 8. **Codex-as-platform fit?** Typed yield and evidence stay harness concerns. One reminder. No second retry. No hashline. No npm publish.
 
+## 17. Tiny yield + one native-crash retry (Node 24 sqlite abort)
+
+1. **Verified delivery?** Yes — live `plan` after PR #13 wrote a schema-shaped yield as assistant text, then mcode 0.2.1 / Node 24.19.0 aborted (`Statement::~Statement`, `RemoveEnvironmentCleanupHook` assert `(env) != nullptr`). JSON was cut mid-string (`"Node version may be <18 so`). Parent refused the truncated object. A 300-byte yield can finish before sqlite GC abort. Reminder + explorer last-message now demand a **tiny** object (summary ≤80 chars, at most 2 short findings). If `classifyHostExit === "crash"` **and** stderr has sqlite/assert/SIGABRT **and** there is no valid yield, we allow **one** extra text-only exec (same session XOR continue, maxSteps 1, permission off, tiny yield prompt). That is not a second schema reminder. Cap: at most one schema reminder + at most one crash retry. Two native crashes fail honest. A complete `looksLikeYield` object (closed `}`) in assistant text is parsed even if more text follows. We do not invent a closing brace. `plan` on hello-pkg can reach PLAN_REVIEW with `validateWorkerYield` passing.
+2. **Harness not prompt pack?** Yes — tiny-yield copy, `isHostNativeCrash`, `yieldCrashRetryRequest`, snapshot stderr cap (400), and `discover.md` crash notes live in TypeScript. Role file stayed a short contract.
+3. **One core, many surfaces?** Same spawn path for `plan` / `max` / `team`. CLI and MCP do not parse worker prose.
+4. **Subagents are workers not trees?** Unchanged. One `mcode exec` per worker. At most one reminder and one crash retry. No grandchild.
+5. **MiniMax-native?** Yes — we follow the live host abort, not a Node 22 swap we cannot do. Still no `--output-schema` (exit 70). First explorer exec keeps `--max-steps 20` and tools.
+6. **Host honesty?** **Pass, enforced.** Exit 1 without sqlite/assert/SIGABRT is still crash / incomplete, not a crash-retry. Native stacks stay out of `discover.md` (yield summary / assistant JSON / short crash note). Snapshot may keep a 400-char stderr excerpt. We do not dump raw JSONL into the next prompt. We do not invent a WorkerYield from prose. Schema stays strict.
+7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `plan` / `team`.
+8. **Codex-as-platform fit?** Typed yield is still a harness concern. One reminder. One crash retry. No hashline. No npm publish.
+
 ## Failures we refused
 
 - Did not add a second JSON-RPC next to MCP.
@@ -197,3 +208,10 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 - Did not keep sending `--session` and `--continue` together after the host named that pair invocation.
 - Did not drop `--permission off` after the host enum confirmed it is legal.
 - Did not let an empty reminder snapshot wipe first-exec assistant text.
+- Did not invent a closing brace or fields for truncated yield JSON.
+- Did not loosen `validateWorkerYield` to accept prose or a long essay object.
+- Did not treat every exit 1 as a native-crash retry (need sqlite/assert/SIGABRT in stderr).
+- Did not dump `dyld` / better-sqlite3 stacks into `discover.md`.
+- Did not add a second schema reminder or a crash-retry storm.
+- Did not drop tools or `--max-steps 20` on the first explorer exec.
+- Did not send host `--output-schema` or depend on a Node 22 swap.

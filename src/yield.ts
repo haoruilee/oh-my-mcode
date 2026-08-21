@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { packageRoot, parseJsonObject } from "./util.js";
 import type { FindingSeverity, UsageTotals } from "./types.js";
-import { classifyHostExit, type ExecResult, type HostExitKind } from "./mcode.js";
+import { classifyHostExit, hostStderrText, type ExecResult, type HostExitKind } from "./mcode.js";
 import type { RunStore } from "./store.js";
 
 export const YIELD_STATUSES = ["ok", "blocked", "failed"] as const;
@@ -24,6 +24,10 @@ export interface WorkerYield {
 }
 
 export const SCHEMA_MODE = "strict" as const;
+/** Prompt contract only. Schema is unchanged — do not enforce these in validateWorkerYield. */
+export const TINY_YIELD_SUMMARY_MAX = 80;
+export const TINY_YIELD_FINDINGS_MAX = 2;
+export const SNAPSHOT_STDERR_MAX = 400;
 
 export function workerYieldSchemaPath(): string {
   return path.join(packageRoot(), "schemas", "worker-yield.schema.json");
@@ -154,6 +158,10 @@ function parseObjectAt(text: string, start: number): unknown {
   return undefined;
 }
 
+/**
+ * Complete closed `{...}` only (`parseObjectAt` requires a matching `}`).
+ * Trailing prose after a closed yield is ignored. Truncated JSON is not repaired.
+ */
 function extractJsonCandidate(text: string): unknown {
   const fence = text.match(/```json\s*([\s\S]*?)```/i);
   if (fence?.[1]) {
@@ -161,7 +169,7 @@ function extractJsonCandidate(text: string): unknown {
       const parsed = JSON.parse(fence[1]);
       if (looksLikeYield(parsed) && !looksLikePlannerGraph(parsed)) return parsed;
     } catch {
-      // fall through
+      // Unclosed fence / truncated JSON: do not invent a closing brace.
     }
   }
   const rec = parseJsonObject(text, {});
@@ -174,7 +182,12 @@ function extractJsonCandidate(text: string): unknown {
     if (parsed !== undefined) candidates.push(parsed);
   }
   const yields = candidates.filter((item) => looksLikeYield(item) && !looksLikePlannerGraph(item));
-  return yields.at(-1) ?? candidates[0];
+  return yields.at(-1);
+}
+
+/** Public: complete `looksLikeYield` object in assistant text, even if more text follows. */
+export function extractCompleteYieldFromText(text: string): unknown {
+  return extractJsonCandidate(text);
 }
 
 /** Parse host `exec.result.answer` (object or JSON string) or assistant text. */
@@ -256,15 +269,11 @@ export interface ExecSnapshot {
 export interface ExecWithReminder extends ExecResult {
   firstExec?: ExecResult;
   reminderExec?: ExecResult;
+  crashRetryExec?: ExecResult;
 }
 
 export function collectStderr(result: ExecResult): string {
-  if (result.stderr?.trim()) return result.stderr.trim();
-  return (result.events || [])
-    .filter((event) => event.type === "stderr")
-    .map((event) => (event.text || "").trim())
-    .filter(Boolean)
-    .join("\n");
+  return hostStderrText(result);
 }
 
 export function reminderHasAssistantText(result: ExecResult): boolean {
@@ -287,8 +296,25 @@ export function buildExecSnapshot(
   if (answer !== undefined) snapshot.exec_result_answer = answer;
   if (extra.hashes && Object.keys(extra.hashes).length > 0) snapshot.file_hashes = extra.hashes;
   if (result.usage) snapshot.usage = result.usage;
-  if (stderr) snapshot.stderr = stderr;
+  if (stderr) snapshot.stderr = stderr.slice(0, SNAPSHOT_STDERR_MAX);
   return snapshot;
+}
+
+function writeOneSnapshot(
+  store: RunStore,
+  runId: string,
+  name: string,
+  result: ExecResult,
+  extra: { hashes?: Record<string, string>; yieldStatus?: YieldStatus | null },
+  notes: string,
+): void {
+  const snap = buildExecSnapshot(result, extra);
+  store.writeArtifact(runId, name, `${JSON.stringify(snap, null, 2)}\n`);
+  store.writeTextEvidence(runId, "log", name, JSON.stringify(snap), {
+    command: `mcode exec (${name.replace(/^exec-snapshot-|\.json$/g, "")})`,
+    notes,
+    exit_code: result.exitCode,
+  });
 }
 
 export function writeExecPhaseSnapshots(
@@ -300,26 +326,40 @@ export function writeExecPhaseSnapshots(
 ): void {
   const first = result.firstExec ?? result;
   const reminder = result.reminderExec;
-  const firstSnap = buildExecSnapshot(first, {
-    hashes: extra.hashes,
-    yieldStatus: reminder ? null : extra.yieldStatus,
-  });
-  store.writeArtifact(runId, `exec-snapshot-${phase}.json`, `${JSON.stringify(firstSnap, null, 2)}\n`);
-  store.writeTextEvidence(runId, "log", `exec-snapshot-${phase}.json`, JSON.stringify(firstSnap), {
-    command: `mcode exec (${phase})`,
-    notes: "typed exec snapshot (assistant text / exec.result.answer / stderr); not raw JSONL",
-    exit_code: first.exitCode,
-  });
-  if (!reminder) return;
-  const remSnap = buildExecSnapshot(reminder, { hashes: extra.hashes, yieldStatus: extra.yieldStatus });
-  store.writeArtifact(runId, `exec-snapshot-${phase}-reminder.json`, `${JSON.stringify(remSnap, null, 2)}\n`);
-  store.writeTextEvidence(runId, "log", `exec-snapshot-${phase}-reminder.json`, JSON.stringify(remSnap), {
-    command: `mcode exec (${phase} reminder)`,
-    notes: reminderHasAssistantText(reminder)
-      ? "typed reminder snapshot"
-      : "empty reminder; first snapshot kept (assistant_text not overwritten)",
-    exit_code: reminder.exitCode,
-  });
+  const crashRetry = result.crashRetryExec;
+  const hasFollowUp = Boolean(reminder || crashRetry);
+  writeOneSnapshot(
+    store,
+    runId,
+    `exec-snapshot-${phase}.json`,
+    first,
+    { hashes: extra.hashes, yieldStatus: hasFollowUp ? null : extra.yieldStatus },
+    "typed exec snapshot (assistant text / exec.result.answer / stderr excerpt); not raw JSONL",
+  );
+  if (reminder) {
+    writeOneSnapshot(
+      store,
+      runId,
+      `exec-snapshot-${phase}-reminder.json`,
+      reminder,
+      { hashes: extra.hashes, yieldStatus: crashRetry ? null : extra.yieldStatus },
+      reminderHasAssistantText(reminder)
+        ? "typed reminder snapshot"
+        : "empty reminder; first snapshot kept (assistant_text not overwritten)",
+    );
+  }
+  if (crashRetry) {
+    writeOneSnapshot(
+      store,
+      runId,
+      `exec-snapshot-${phase}-crash-retry.json`,
+      crashRetry,
+      { hashes: extra.hashes, yieldStatus: extra.yieldStatus },
+      reminderHasAssistantText(crashRetry)
+        ? "typed crash-retry snapshot"
+        : "empty crash-retry; earlier snapshot kept (assistant_text not overwritten)",
+    );
+  }
 }
 
 export function extractStructuredOutput(events: { raw?: unknown }[]): { data?: unknown } | undefined {
@@ -356,10 +396,17 @@ export function parseWorkerYield(result: ExecResult): { ok: true; data: WorkerYi
   return validateWorkerYield(candidate);
 }
 
+const TINY_YIELD_OBJECT =
+  '{"status":"ok"|"blocked"|"failed","summary":"≤80 chars","findings":[{"severity":"note","title":"short","detail":"short","evidence":[]}],"artifacts":[]}';
+
 export function yieldReminder(error: string): string {
-  return `Yield failed schemaMode=strict: ${error}. Same session continuation. Do not use tools. Do not hash files. Reply with only the yield JSON object {"status":"ok"|"blocked"|"failed","summary":"...","findings":[{"severity":"...","title":"...","detail":"...","evidence":[]}],"artifacts":[]} — no prose, no toolUse. Last message is only that JSON. Do not spawn. Do not dump files or raw JSONL.`;
+  return `Yield failed schemaMode=strict: ${error}. Same session continuation. Do not use tools. Do not hash files. Reply with only the tiny yield JSON object ${TINY_YIELD_OBJECT} — summary ≤${TINY_YIELD_SUMMARY_MAX} chars, at most ${TINY_YIELD_FINDINGS_MAX} findings, short title/detail. No prose, no toolUse. Last message is only that JSON. Do not spawn. Do not dump files or raw JSONL.`;
+}
+
+export function crashRetryPrompt(): string {
+  return `Host crashed mid-yield (native sqlite/assert). Same session continuation. Do not use tools. Do not hash files. Reply with only the tiny yield JSON object ${TINY_YIELD_OBJECT} — summary ≤${TINY_YIELD_SUMMARY_MAX} chars, at most ${TINY_YIELD_FINDINGS_MAX} findings. No prose, no toolUse. Last message is only that JSON. Do not spawn. Do not dump files or raw JSONL. This is not a schema reminder.`;
 }
 
 export function yieldContractLine(): string {
-  return 'Yield JSON (required, schemaMode=strict): {"status":"ok"|"blocked"|"failed","summary":"...","findings":[{"severity":"note","title":"...","detail":"...","evidence":[]}],"artifacts":[],"file_hashes":{}}';
+  return `Tiny yield JSON (required, schemaMode=strict): ${TINY_YIELD_OBJECT} — summary ≤${TINY_YIELD_SUMMARY_MAX} chars, at most ${TINY_YIELD_FINDINGS_MAX} findings. No prose.`;
 }
