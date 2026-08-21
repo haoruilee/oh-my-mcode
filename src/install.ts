@@ -43,6 +43,9 @@ export function installPlugin(opts: { yes?: boolean } = {}): { dest: string; pac
   log("");
   log("Then in MiniMax Code (desktop or mcode TUI) say:");
   log("  max mode: <your task>");
+  log("");
+  log("examples/AGENTS.max-mode.md is an opt-in Max Mode template for a product repo.");
+  log("install does not write or overwrite a project AGENTS.md.");
   if (opts.yes) log("(install --yes: non-interactive)");
   return { dest, packageRoot: root, yes: Boolean(opts.yes) };
 }

@@ -122,4 +122,4 @@ rm -rf ~/.minimax/plugins/oh-my-mcode
 
 就是这个产品。欢迎 PR。
 
-[宿主现状](docs/host-reality.zh-CN.md) · [架构](docs/architecture.zh-CN.md) · [Harness](docs/harness.md) · [路线图](docs/roadmap.md)
+[宿主现状](docs/host-reality.zh-CN.md) · [架构](docs/architecture.zh-CN.md) · [Harness](docs/harness.md) · [路线图](docs/roadmap.md) · [AGENTS.md](AGENTS.md) · [Max Mode 模板](examples/AGENTS.max-mode.md)

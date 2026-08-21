@@ -47,6 +47,58 @@ function captureMain(argv) {
   };
 }
 
+test("install does not overwrite a project AGENTS.md", () => {
+  const fakeRoot = tmp("omm-pkg-");
+  mkdirSync(path.join(fakeRoot, ".minimax-plugin"), { recursive: true });
+  mkdirSync(path.join(fakeRoot, "examples"), { recursive: true });
+  writeFileSync(
+    path.join(fakeRoot, "plugin.json"),
+    JSON.stringify({ name: "oh-my-mcode", version: "0.0.0-fake" }),
+  );
+  writeFileSync(
+    path.join(fakeRoot, ".minimax-plugin/plugin.json"),
+    JSON.stringify({ schemaVersion: 1, name: "oh-my-mcode", version: "0.0.0-fake" }),
+  );
+  writeFileSync(path.join(fakeRoot, "AGENTS.md"), "# plugin operating manual\n");
+  writeFileSync(path.join(fakeRoot, "examples/AGENTS.max-mode.md"), "# opt-in max mode template\n");
+
+  const cwd = tmp("omm-cwd-");
+  const projectAgents = "# user project AGENTS.md — do not clobber\n";
+  writeFileSync(path.join(cwd, "AGENTS.md"), projectAgents);
+
+  const home = tmp("omm-home-");
+  const prevRoot = process.env.OMM_PACKAGE_ROOT;
+  const prevHome = process.env.MINIMAX_HOME;
+  const prevCwd = process.cwd();
+  const logs = [];
+  const origErr = process.stderr.write.bind(process.stderr);
+  process.env.OMM_PACKAGE_ROOT = fakeRoot;
+  process.env.MINIMAX_HOME = home;
+  process.chdir(cwd);
+  process.stderr.write = (chunk) => {
+    logs.push(String(chunk));
+    return true;
+  };
+  try {
+    const result = installPlugin({ yes: true });
+    assert.equal(readFileSync(path.join(cwd, "AGENTS.md"), "utf8"), projectAgents);
+    assert.notEqual(path.resolve(result.dest), path.resolve(cwd));
+    assert.ok(existsSync(path.join(result.dest, "AGENTS.md")));
+    assert.match(readFileSync(path.join(result.dest, "AGENTS.md"), "utf8"), /plugin operating manual/);
+    assert.ok(existsSync(path.join(result.dest, "examples/AGENTS.max-mode.md")));
+    const text = logs.join("");
+    assert.match(text, /opt-in/);
+    assert.match(text, /does not write or overwrite a project AGENTS\.md/);
+  } finally {
+    process.stderr.write = origErr;
+    process.chdir(prevCwd);
+    if (prevRoot) process.env.OMM_PACKAGE_ROOT = prevRoot;
+    else delete process.env.OMM_PACKAGE_ROOT;
+    if (prevHome) process.env.MINIMAX_HOME = prevHome;
+    else delete process.env.MINIMAX_HOME;
+  }
+});
+
 test("install copies from package root, not cwd", () => {
   const fakeRoot = tmp("omm-pkg-");
   mkdirSync(path.join(fakeRoot, ".minimax-plugin"), { recursive: true });
