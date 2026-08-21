@@ -1,5 +1,16 @@
 # AGENTS.md
 
+**IMPORTANT:** This file is the source of truth for agent instructions. Update it (or a nested `AGENTS.md`) when adding guidance. Do not add a parallel `CLAUDE.md` / Cursor rules dump.
+
+## Commands
+
+| Gate | Command |
+| --- | --- |
+| hermetic | `npm test` |
+| live rematch | `oh-my-mcode plan` or `oh-my-mcode max` on a **copy** of `test/fixtures/hello-pkg` |
+
+This repo uses **npm**. Do **not** use bun or pnpm — those rewrite the lockfile. Do not run a production publish or `npm publish` in an agent session.
+
 Contributor operating manual for **oh-my-mcode**. Not a skill-pack blurb. This file does not become the orchestrator.
 
 North star: **Not more agents. Ship with evidence. The TypeScript harness owns the loop. `mcode` is the host.**
@@ -27,6 +38,7 @@ Host already has explore / plan / team. Role files do **not** register new host 
 | Path | What it is |
 | --- | --- |
 | `src/orchestrator.ts` | Phase machine. `plan` stops at PLAN_REVIEW. `max` continues to ACCEPT. |
+| `dist/` | Generated `tsc` output. Edit `src/`, then `npm test`. Do not hand-edit compiled JS. |
 | `src/harness.ts` | One core: `submit` / subscribe / bind. CLI and MCP call this. |
 | `src/subagent.ts` | One role worker per `mcode exec`. Depth ≥ 1 throws. |
 | `src/yield.ts` | `schemaMode=strict`. Parent parses `exec.result.answer` / assistant JSON / `structuredOutput.data`. |
@@ -81,7 +93,7 @@ Flat `team` is TypeScript scheduling of sibling builders (`src/team.ts`). Still 
 
 ## Host contract
 
-Do not copy this file into a user template. Facts live in [`docs/host-reality.md`](docs/host-reality.md) and are locked in [`test/host-contract.test.mjs`](test/host-contract.test.mjs).
+Do not copy this file into a user template. Facts live in [`docs/host-reality.md`](docs/host-reality.md) and are locked in [`test/host-contract.test.mjs`](test/host-contract.test.mjs). Resist bloating `src/orchestrator.ts` / `src/mcode.ts`. New host-contract facts go in `docs/host-reality.md` + a test, not another prompt paragraph.
 
 Observed on **mcode 0.2.1** (2026-08-21), then rematched:
 
@@ -128,22 +140,22 @@ Test the contract the system exposes — not the easiest internal detail to asse
 
 After each cut, answer the eight questions in [`docs/design-check.md`](docs/design-check.md). **Fail a check → change the cut.** Do not keep a failing check as a footnote.
 
-## Refusals
+## Always / Ask / Never
 
-- No hooks. No registered host agents. No fake host `/max`.
-- No Hashline / `[PATH#TAG]` / PUT/CUT. Content-hash stale-reject stays in TypeScript (`src/hash.ts`).
-- No grandchild agents. No Sisyphus / Prometheus / 32-agent catalog.
-- Do not invent a WorkerYield from assistant prose. Do not loosen `validateWorkerYield`.
-- Do not send `--output-schema` by default.
-- Do not dump raw host JSONL into the next prompt.
-- Do not npm publish unless the user asked.
-- Do not clone other repos into this one.
-- `oh-my-mcode install` copies the plugin to `~/.minimax/plugins/oh-my-mcode`. It does **not** overwrite a user’s project `AGENTS.md`. The Max Mode template is opt-in.
+**Always**
+- Drive `max` / `plan`. Leave evidence under `.minimax/runs/`.
+- `npm test` before claiming hermetic green.
+- DESIGN CHECK fail → change the cut.
 
-## Commands
+**Ask**
+- Commit, merge, `npm publish`, force-push.
+- Live rematch that would rebuild better-sqlite3 on the user’s daily Node 24 `mcode`.
 
-```bash
-npm test
-```
-
-Never commit unless asked.
+**Never**
+- Hooks. Registered host agents. Fake host `/max`.
+- Hashline / `[PATH#TAG]` / PUT/CUT (content-hash stale-reject stays in `src/hash.ts`).
+- Grandchildren. Sisyphus / Prometheus / 32-agent catalog.
+- Invent a WorkerYield from prose. Do not loosen `validateWorkerYield`.
+- `--output-schema` by default. Dump raw host JSONL into the next prompt.
+- Overwrite a user project `AGENTS.md` on install. Clone other repos into this one.
+- Run live `mcode` under Node 22 while the better-sqlite3 addon is compiled for 137 (or vice versa) without an explicit rebuild.
