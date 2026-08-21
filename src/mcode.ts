@@ -37,6 +37,8 @@ export interface ExecResult {
   structuredOutput?: { data?: unknown };
   wall_ms?: number;
   first_token_ms?: number;
+  /** Host stderr. Live 0.2.1 invocation (exit 2) writes the reason here and nowhere else. */
+  stderr?: string;
 }
 
 export interface McodeClient {
@@ -196,6 +198,37 @@ export const HOST_TIMEOUT_PARSE_RE = /^(\d+)(ms|s|m|h)?$/i;
 export const HOST_TIMEOUT_ARG_RE = /^\d+(ms|s|m|h)$/i;
 export const HOST_PERMISSIONS = ["ask", "smart", "full", "off"] as const;
 
+/**
+ * Live mcode 0.2.1 `@minimax-ai/code` cli.js:
+ * `if (e.session && e.continue) throw o_("--session and --continue are mutually exclusive.")`
+ * `function o_(t, e) { return new vp("invocation", t, e) }` → `Sw.invocation = 2`.
+ * `--permission off` is in the host enum (`ask|smart|full|off`); it is not the exit-2 cause.
+ */
+export const HOST_SESSION_CONTINUE_EXCLUSIVE =
+  "--session and --continue are mutually exclusive.";
+
+export function sessionXorContinue(
+  req: Pick<ExecRequest, "session" | "continue">,
+): Pick<ExecRequest, "session" | "continue"> {
+  const session = typeof req.session === "string" && req.session.trim() ? req.session.trim() : undefined;
+  if (session) return { session };
+  if (req.continue) return { continue: true };
+  return {};
+}
+
+export function execArgvHasSession(argv: string[]): boolean {
+  return argv.includes("--session");
+}
+
+export function execArgvHasContinue(argv: string[]): boolean {
+  return argv.includes("--continue");
+}
+
+/** Legal 0.2.1 session selection: `--session` XOR `--continue`, not both. */
+export function isLegalHostSessionArgv(argv: string[]): boolean {
+  return !(execArgvHasSession(argv) && execArgvHasContinue(argv));
+}
+
 export function formatHostTimeout(timeoutMs: number): string {
   return `${Math.max(1, Math.ceil(timeoutMs / 1000))}s`;
 }
@@ -211,8 +244,9 @@ export function buildExecArgs(req: ExecRequest, prefixArgs: string[] = []): stri
     "--permission",
     req.permission,
   ];
-  if (req.session) args.push("--session", req.session);
-  if (req.continue) args.push("--continue");
+  const sessionFlags = sessionXorContinue(req);
+  if (sessionFlags.session) args.push("--session", sessionFlags.session);
+  else if (sessionFlags.continue) args.push("--continue");
   const schema = hostOutputSchemaEnabled() ? readOutputSchemaArg(req.outputSchema) : undefined;
   if (schema) args.push("--output-schema", schema);
   for (const file of req.files || []) args.push("--file", file);
@@ -285,6 +319,7 @@ export class ProcessMcode implements McodeClient {
     const events: StreamEvent[] = [];
     const started = Date.now();
     let first_token_ms: number | undefined;
+    let stderr = "";
 
     const exitCode = await new Promise<number>((resolve, reject) => {
       const child = spawn(command, args, {
@@ -292,7 +327,6 @@ export class ProcessMcode implements McodeClient {
         env: process.env,
         stdio: ["ignore", "pipe", "pipe"],
       });
-      let stderr = "";
       let buffer = "";
       const onChunk = (chunk: Buffer) => {
         buffer += chunk.toString("utf8");
@@ -346,6 +380,7 @@ export class ProcessMcode implements McodeClient {
     const wall_ms = Date.now() - started;
     const usage = extractUsage(events, rawLines);
     if (usage && usage.first_token_ms == null && first_token_ms != null) usage.first_token_ms = first_token_ms;
+    const stderrText = stderr.trim();
     return {
       text: collectAssistantText(events),
       events,
@@ -355,6 +390,7 @@ export class ProcessMcode implements McodeClient {
       structuredOutput: extractStructuredOutput(events),
       wall_ms,
       first_token_ms: usage?.first_token_ms ?? first_token_ms,
+      ...(stderrText ? { stderr: stderrText } : {}),
     };
   }
 }

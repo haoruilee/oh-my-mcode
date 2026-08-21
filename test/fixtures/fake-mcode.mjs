@@ -11,6 +11,12 @@ function rejectOutputSchemaPath() {
   process.exit(2);
 }
 
+/** Live mcode 0.2.1: `o_("--session and --continue are mutually exclusive.")` → invocation, exit 2. */
+function rejectSessionAndContinue() {
+  process.stderr.write("mcode exec failed: --session and --continue are mutually exclusive.\n");
+  process.exit(2);
+}
+
 /** Live host `chm`: no unit → milliseconds. Bare `180` is 180ms → exit 6 (Sw.timeout). */
 function rejectBareTimeout() {
   process.stderr.write("mcode exec failed: timeout (exit 6). Bare --timeout integers are milliseconds.\n");
@@ -33,6 +39,8 @@ if (args[0] === "--version") {
   process.stdout.write("0.2.1\n");
   process.exit(0);
 }
+
+if (args.includes("--session") && args.includes("--continue")) rejectSessionAndContinue();
 
 const timeoutIdx = args.indexOf("--timeout");
 if (timeoutIdx >= 0) {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,8 +7,10 @@ import { test } from "node:test";
 import {
   HOST_EXIT,
   HOST_PERMISSIONS,
+  HOST_SESSION_CONTINUE_EXCLUSIVE,
   HOST_TIMEOUT_ARG_RE,
   HOST_TIMEOUT_PARSE_RE,
+  ProcessMcode,
   ROLE_EXEC_DEFAULTS,
   StubMcode,
   applyRoleDefaults,
@@ -15,7 +18,9 @@ import {
   classifyHostExit,
   collectAssistantText,
   formatHostTimeout,
+  isLegalHostSessionArgv,
   parseStreamLine,
+  sessionXorContinue,
 } from "../dist/mcode.js";
 import {
   extractHostSessionId,
@@ -156,6 +161,7 @@ test("host exit 1 is crash / incomplete stream, not timeout", () => {
   assert.equal(HOST_EXIT.cancelled, 130);
   assert.equal(classifyHostExit(1), "crash");
   assert.notEqual(classifyHostExit(1), "timeout");
+  assert.equal(classifyHostExit(2), "invocation");
   assert.equal(classifyHostExit(6), "timeout");
   assert.equal(
     classifyExecResult({ text: "partial {", events: [], exitCode: 1, rawLines: ["partial {"] }),
@@ -281,7 +287,7 @@ test("yield reminder reuses the extracted mvs_ session (no omm_run_ token)", asy
   assert.notEqual(requests[0].continue, true);
   assert.equal(requests[0].permission, "ask");
   assert.equal(requests[1].session, "mvs_e04430ddcafe");
-  assert.equal(requests[1].continue, true);
+  assert.notEqual(requests[1].continue, true);
   assert.equal(requests[1].maxSteps, YIELD_REMINDER_MAX_STEPS);
   assert.equal(requests[1].permission, YIELD_REMINDER_PERMISSION);
   assert.match(requests[1].prompt, /schemaMode=strict/);
@@ -301,11 +307,91 @@ test("yield reminder reuses the extracted mvs_ session (no omm_run_ token)", asy
   assert.equal(requests[0].timeoutMs, ROLE_EXEC_DEFAULTS.explorer.timeoutMs);
 
   const reminderArgv = buildExecArgs(requests[1]);
-  assert.ok(reminderArgv.includes("--continue"));
+  assert.equal(isLegalHostSessionArgv(reminderArgv), true);
+  assert.equal(reminderArgv.includes("--continue"), false);
   assert.equal(reminderArgv[reminderArgv.indexOf("--session") + 1], "mvs_e04430ddcafe");
   assert.equal(maxStepsArg(reminderArgv), String(YIELD_REMINDER_MAX_STEPS));
   assert.equal(permissionArg(reminderArgv), YIELD_REMINDER_PERMISSION);
   assert.equal(schemaArg(reminderArgv), undefined);
+});
+
+test("reminder argv is a legal 0.2.1 combination: session XOR continue, not both", () => {
+  const firstWithSession = {
+    text: "partial {",
+    events: [
+      {
+        raw: { type: "message", cursor: "sse1:session%3Amvs_fa1108f7161b4c189d22ce2f9508e959", message: { role: "assistant" } },
+        type: "message",
+        role: "assistant",
+      },
+    ],
+    exitCode: 1,
+    rawLines: [],
+  };
+  const firstWithoutSession = { text: "partial {", events: [], exitCode: 1, rawLines: [] };
+  const base = {
+    role: "explorer",
+    contract: { task_id: "T1", objective: "look", acceptance: [], constraints: [] },
+    permission: "smart",
+    cwd: tmp(),
+    prompt: explorerPrompt("add hello()"),
+    maxSteps: ROLE_EXEC_DEFAULTS.explorer.maxSteps,
+  };
+
+  const withSession = yieldReminderRequest(base, firstWithSession);
+  assert.equal(withSession.session, "mvs_fa1108f7161b4c189d22ce2f9508e959");
+  assert.notEqual(withSession.continue, true);
+  const sessionArgv = buildExecArgs(
+    applyRoleDefaults({
+      cwd: base.cwd,
+      prompt: yieldReminder("missing yield"),
+      role: "explorer",
+      permission: withSession.permission,
+      session: withSession.session,
+      continue: withSession.continue,
+      maxSteps: withSession.maxSteps,
+    }),
+  );
+  assert.equal(isLegalHostSessionArgv(sessionArgv), true);
+  assert.ok(sessionArgv.includes("--session"));
+  assert.equal(sessionArgv.includes("--continue"), false);
+  assert.equal(maxStepsArg(sessionArgv), "1");
+  assert.equal(permissionArg(sessionArgv), "off");
+  assert.equal(schemaArg(sessionArgv), undefined);
+
+  const noSession = yieldReminderRequest(base, firstWithoutSession);
+  assert.equal(noSession.session, undefined);
+  assert.equal(noSession.continue, true);
+  const continueArgv = buildExecArgs(
+    applyRoleDefaults({
+      cwd: base.cwd,
+      prompt: yieldReminder("missing yield"),
+      role: "explorer",
+      permission: noSession.permission,
+      session: noSession.session,
+      continue: noSession.continue,
+      maxSteps: noSession.maxSteps,
+    }),
+  );
+  assert.equal(isLegalHostSessionArgv(continueArgv), true);
+  assert.equal(continueArgv.includes("--session"), false);
+  assert.ok(continueArgv.includes("--continue"));
+
+  const both = sessionXorContinue({ session: "mvs_abc", continue: true });
+  assert.equal(both.session, "mvs_abc");
+  assert.equal(both.continue, undefined);
+  const bothArgv = buildExecArgs({
+    cwd: base.cwd,
+    prompt: yieldReminder("missing yield"),
+    role: "explorer",
+    permission: "off",
+    session: "mvs_abc",
+    continue: true,
+    maxSteps: 1,
+  });
+  assert.equal(isLegalHostSessionArgv(bothArgv), true);
+  assert.equal(bothArgv.includes("--continue"), false);
+  assert.match(HOST_SESSION_CONTINUE_EXCLUSIVE, /mutually exclusive/);
 });
 
 test("stitched 0.2.1 stream ending on toolUse is not a yield; reminder text-only JSON is", async () => {
@@ -355,7 +441,7 @@ test("stitched 0.2.1 stream ending on toolUse is not a yield; reminder text-only
     first,
   );
   assert.equal(shaped.session, "mvs_c26375a905a64bbc8b25ae63a635c812");
-  assert.equal(shaped.continue, true);
+  assert.notEqual(shaped.continue, true);
   assert.equal(shaped.maxSteps, YIELD_REMINDER_MAX_STEPS);
   assert.equal(shaped.permission, YIELD_REMINDER_PERMISSION);
   assert.notEqual(shaped.maxSteps, ROLE_EXEC_DEFAULTS.explorer.maxSteps);
@@ -382,7 +468,7 @@ test("stitched 0.2.1 stream ending on toolUse is not a yield; reminder text-only
   assert.equal(requests[0].permission, "smart");
   assert.notEqual(requests[0].continue, true);
   assert.equal(requests[1].session, "mvs_c26375a905a64bbc8b25ae63a635c812");
-  assert.equal(requests[1].continue, true);
+  assert.notEqual(requests[1].continue, true);
   assert.equal(requests[1].maxSteps, 1);
   assert.equal(requests[1].permission, "off");
   assert.match(requests[1].prompt, /Do not use tools/);
@@ -554,6 +640,101 @@ test("failed yield snapshot keeps assistant text so discover.md is not only inva
   assert.match(failed.findings[0].detail, /assistant_text/);
 });
 
+test("empty reminder does not wipe first-exec snapshot; exit 2 persists stderr as invocation", async () => {
+  const workspace = copyHelloPkg();
+  const prose = "hello-pkg maps src/index.js placeholder; hello() is missing";
+  const invocation = "mcode exec failed: --session and --continue are mutually exclusive.";
+  const run = await runPlan({
+    workspace,
+    goal: "keep first snapshot when reminder is empty",
+    mcode: new StubMcode(async (req) => {
+      if ((req.prompt || "").startsWith("Yield failed")) {
+        return {
+          text: "",
+          events: [{ raw: invocation, type: "stderr", text: invocation }],
+          exitCode: HOST_EXIT.invocation,
+          rawLines: [],
+          stderr: invocation,
+        };
+      }
+      return {
+        text: prose,
+        events: [
+          { raw: { type: "delta", role: "assistant", content: prose }, type: "delta", role: "assistant", text: prose },
+          {
+            raw: { type: "message", cursor: "sse1:session%3Amvs_fa1108f7161b4c189d22ce2f9508e959", message: { role: "assistant" } },
+            type: "message",
+            role: "assistant",
+          },
+        ],
+        exitCode: 1,
+        rawLines: [],
+      };
+    }),
+  });
+  assert.equal(run.phase, "DISCOVER");
+  assert.equal(run.status, "rejected");
+  const store = new RunStore(workspace);
+  const discover = store.loadEvidence(run.run_id).items.find((item) => item.path.includes("discover.md"));
+  const body = store.readArtifact(run.run_id, discover.path);
+  assert.match(body, /hello-pkg maps src/);
+  assert.doesNotMatch(body, /^invalid worker yield$/);
+
+  const firstSnap = JSON.parse(store.readArtifact(run.run_id, "exec-snapshot-discover.json"));
+  assert.match(firstSnap.assistant_text, /hello-pkg maps src/);
+  assert.equal(firstSnap.exit_code, 1);
+  assert.equal(firstSnap.host_exit, "crash");
+
+  const reminderSnap = JSON.parse(store.readArtifact(run.run_id, "exec-snapshot-discover-reminder.json"));
+  assert.equal(reminderSnap.assistant_text, "");
+  assert.equal(reminderSnap.exit_code, 2);
+  assert.equal(reminderSnap.host_exit, "invocation");
+  assert.match(reminderSnap.stderr, /mutually exclusive/);
+
+  const failed = JSON.parse(store.readArtifact(run.run_id, "yield-discover.json"));
+  assert.equal(failed.status, "failed");
+  assert.match(failed.findings[0].detail, /hello-pkg maps src/);
+  assert.match(failed.findings[0].detail, /reminder_exit: 2 \(invocation\)/);
+  assert.match(failed.findings[0].detail, /mutually exclusive/);
+});
+
+test("ProcessMcode persists host stderr on exit 2 invocation", async () => {
+  const prev = process.env.OMM_MCODE;
+  process.env.OMM_MCODE = path.resolve("test/fixtures/fake-mcode.mjs");
+  try {
+    const client = new ProcessMcode();
+    const result = await client.exec({
+      cwd: tmp(),
+      prompt: "pong",
+      role: "explorer",
+      permission: "off",
+      session: "mvs_deadbeef",
+      continue: true,
+      maxSteps: 1,
+    });
+    // buildExecArgs must not emit both; this asserts the host fixture still rejects if someone does.
+    assert.equal(isLegalHostSessionArgv(buildExecArgs({
+      cwd: tmp(),
+      prompt: "pong",
+      role: "explorer",
+      permission: "off",
+      session: "mvs_deadbeef",
+      continue: true,
+    })), true);
+    assert.notEqual(result.exitCode, 2);
+  } finally {
+    if (prev === undefined) delete process.env.OMM_MCODE;
+    else process.env.OMM_MCODE = prev;
+  }
+
+  const spawned = spawnSync(process.execPath, [path.resolve("test/fixtures/fake-mcode.mjs"), "exec", "--cwd", tmp(), "--output-format", "stream-json", "--permission", "off", "--session", "mvs_deadbeef", "--continue", "pong"], {
+    encoding: "utf8",
+  });
+  assert.equal(spawned.status, 2);
+  assert.match(spawned.stderr, /mutually exclusive/);
+  assert.equal(classifyHostExit(spawned.status), "invocation");
+});
+
 test("buildExecSnapshot is typed evidence, not raw JSONL", () => {
   const yieldData = { status: "ok", summary: "pong", findings: [], artifacts: [] };
   const snapshot = buildExecSnapshot(
@@ -570,6 +751,18 @@ test("buildExecSnapshot is typed evidence, not raw JSONL", () => {
   assert.deepEqual(snapshot.exec_result_answer, yieldData);
   assert.deepEqual(snapshot.file_hashes, { "src/index.js": "abc" });
   assert.equal(snapshot.exit_code, 0);
+  assert.equal(snapshot.host_exit, "success");
   assert.equal(snapshot.yield_status, "ok");
   assert.doesNotMatch(JSON.stringify(snapshot), /do-not-persist-raw/);
+
+  const invocationSnap = buildExecSnapshot({
+    text: "",
+    events: [{ raw: HOST_SESSION_CONTINUE_EXCLUSIVE, type: "stderr", text: HOST_SESSION_CONTINUE_EXCLUSIVE }],
+    exitCode: 2,
+    rawLines: [],
+    stderr: HOST_SESSION_CONTINUE_EXCLUSIVE,
+  });
+  assert.equal(invocationSnap.host_exit, "invocation");
+  assert.equal(invocationSnap.exit_code, 2);
+  assert.match(invocationSnap.stderr, /mutually exclusive/);
 });

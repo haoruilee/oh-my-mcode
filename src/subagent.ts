@@ -1,21 +1,31 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { CliError } from "./util.js";
 import type { Permission, Role, TaskContract } from "./types.js";
-import { applyRoleDefaults, hostOutputSchemaEnabled, type ExecRequest, type ExecResult, type McodeClient } from "./mcode.js";
+import {
+  applyRoleDefaults,
+  classifyHostExit,
+  hostOutputSchemaEnabled,
+  sessionXorContinue,
+  type ExecRequest,
+  type ExecResult,
+  type McodeClient,
+} from "./mcode.js";
 import { execTracked, extractHostSessionId, isSynthesizedSessionToken, type SessionOpts } from "./session.js";
 import type { RunStore } from "./store.js";
 import { builderPrompt } from "./prompts.js";
 import {
+  collectStderr,
   emptyFailedYield,
   looksLikePlannerGraph,
   parseWorkerYield,
   workerYieldSchemaPath,
   yieldReminder,
   yieldSchemaAvailable,
+  type ExecWithReminder,
   type WorkerYield,
 } from "./yield.js";
 
-/** Reminder exec: one text-only step. Host permission `off` cannot start a tool loop. */
+/** Reminder exec: one text-only step. Host permission `off` is legal on 0.2.1 and cannot start a tool loop. */
 export const YIELD_REMINDER_MAX_STEPS = 1;
 export const YIELD_REMINDER_PERMISSION: Permission = "off";
 
@@ -40,7 +50,7 @@ export interface SpawnContext {
   sessionOpts?: SessionOpts;
 }
 
-export interface SpawnResult extends ExecResult {
+export interface SpawnResult extends ExecWithReminder {
   yield: WorkerYield;
 }
 
@@ -94,15 +104,20 @@ export async function spawnSubagent(req: SpawnRequest, ctx: SpawnContext): Promi
 }
 
 /**
- * One reminder after an invalid yield. Continuation of the same host session.
- * Not a fresh explore: no tools, maxSteps 1, permission off.
+ * One reminder after an invalid yield. Same host session, text only.
+ * Live 0.2.1: `--session` and `--continue` are mutually exclusive (invocation, exit 2).
+ * Prefer `--session <mvs_>`. `--continue` only when no session id exists.
+ * `--permission off` is in the host enum; it is not the exit-2 cause.
  */
 export function yieldReminderRequest(req: SpawnRequest, first: ExecResult): SpawnRequest {
   const hostSession = extractHostSessionId(first);
+  const candidate = hostSession && !isSynthesizedSessionToken(hostSession) ? hostSession : req.session;
+  const session = candidate && !isSynthesizedSessionToken(candidate) ? candidate : undefined;
+  const legal = sessionXorContinue({ session, continue: !session });
   return {
     ...req,
-    session: hostSession && !isSynthesizedSessionToken(hostSession) ? hostSession : req.session,
-    continue: true,
+    session: legal.session,
+    continue: legal.continue,
     maxSteps: YIELD_REMINDER_MAX_STEPS,
     permission: YIELD_REMINDER_PERMISSION,
   };
@@ -152,21 +167,37 @@ async function spawnOnce(req: SpawnRequest, ctx: SpawnContext): Promise<SpawnRes
   }
 
   const prompt = req.prompt || builderPrompt(req.contract);
-  let result = await execOnce(req, ctx, prompt);
-  let parsed = resolveYield(result, req.role);
+  const first = await execOnce(req, ctx, prompt);
+  let parsed = resolveYield(first, req.role);
+  let reminder: ExecResult | undefined;
   if (!parsed.ok) {
     // Continuation only. Do not re-send the explore contract (that invited a tool loop).
     // Do not dump first-exec JSONL or assistant prose into this prompt.
-    result = await execOnce(yieldReminderRequest(req, result), ctx, yieldReminder(parsed.error));
-    parsed = resolveYield(result, req.role);
+    reminder = await execOnce(yieldReminderRequest(req, first), ctx, yieldReminder(parsed.error));
+    parsed = resolveYield(reminder, req.role);
   }
+  const assistant = (first.text || "").trim() || (reminder?.text || "").trim();
+  const reminderStderr = reminder ? collectStderr(reminder) : "";
+  const reminderExit = reminder ? classifyHostExit(reminder.exitCode) : undefined;
+  const evidence = reminder && (reminder.text || "").trim() ? reminder : first;
   const workerYield = parsed.ok
     ? parsed.data
     : emptyFailedYield(
         "invalid worker yield",
-        [parsed.error, result.text?.trim() ? `assistant_text: ${result.text.trim().slice(0, 1500)}` : ""]
+        [
+          parsed.error,
+          assistant ? `assistant_text: ${assistant.slice(0, 1500)}` : "",
+          reminder && reminderExit && reminderExit !== "success"
+            ? `reminder_exit: ${reminder.exitCode} (${reminderExit})`
+            : "",
+          reminderStderr ? `reminder_stderr: ${reminderStderr.slice(0, 1500)}` : "",
+        ]
           .filter(Boolean)
           .join("\n"),
       );
-  return { ...result, yield: workerYield };
+  return {
+    ...evidence,
+    yield: workerYield,
+    ...(reminder ? { firstExec: first, reminderExec: reminder } : {}),
+  };
 }

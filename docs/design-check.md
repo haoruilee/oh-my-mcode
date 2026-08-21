@@ -161,13 +161,24 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 ## 15. Explorer last message is yield JSON; reminder cannot start a tool loop
 
 1. **Verified delivery?** Yes — live `plan` on hello-pkg (mcode 0.2.1) mapped the fixture (`hello()` imported, `placeholder()` exported) then died on toolUse (exit 1, not timeout 6 / limit 7). Reminder reused the `mvs_` session but hashed files instead of writing yield JSON. Parent still requires `validateWorkerYield` / `schemaMode=strict`. We did not invent a WorkerYield from the assistant prose.
-2. **Harness not prompt pack?** Yes — reminder argv (`--session`, `--continue`, `--max-steps 1`, `--permission off`) is TypeScript in `yieldReminderRequest`. Role file stayed a short contract. Explorer prompt forbids post-map tools.
+2. **Harness not prompt pack?** Yes — reminder argv (`--session` XOR `--continue`, `--max-steps 1`, `--permission off`) is TypeScript in `yieldReminderRequest`. Role file stayed a short contract. Explorer prompt forbids post-map tools.
 3. **One core, many surfaces?** Same spawn / reminder path for `plan` / `max` / `team`. CLI and MCP do not parse worker prose.
 4. **Subagents are workers not trees?** Unchanged. One `mcode exec` per worker, one reminder, no grandchild. Reminder is a continuation of the same session, not a second explorer.
 5. **MiniMax-native?** Yes — host `--permission off` + `--max-steps 1` so the only legal assistant message is text. We still do not send `--output-schema` (exit 70).
 6. **Host honesty?** **Pass, enforced.** Exit 1 after toolUse stays crash / incomplete, not timeout. First explorer exec still sends role `--max-steps` (20). Reminder prompt is the yield reminder only — no raw JSONL, no first-exec transcript, no re-sent explore contract. Parent never synthesizes yield JSON from prose.
 7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `plan` / `team`.
 8. **Codex-as-platform fit?** Typed yield is still a harness concern. One reminder. No second retry. No hashline.
+
+## 16. Reminder argv is a legal 0.2.1 combination (session XOR continue)
+
+1. **Verified delivery?** Yes — live rematch after PR #12 (`plan` hello-pkg, mcode 0.2.1) bound `mvs_…` (`host_continue: false`) then the reminder died in ~1s with **exit 2 (invocation)**. Snapshot was empty (`assistant_text: ""`) and overwrote `discover.md` with only `invalid worker yield`. Host `cli.js` (`@minimax-ai/code` 0.2.1): `if (e.session && e.continue) throw o_("--session and --continue are mutually exclusive.")` and `o_` constructs `vp("invocation", …)` → `Sw.invocation = 2`. `--permission off` is in the host enum (`ask|smart|full|off`); it is not the exit-2 cause. Reminder now sends `--session <mvs_>` without `--continue`, keeps `--max-steps 1` and `--permission off`. First snapshot stays in `exec-snapshot-discover.json`; reminder writes `exec-snapshot-discover-reminder.json` and keeps stderr on exit 2. `discover.md` still shows first-exec prose when the reminder is empty. Parent still requires `validateWorkerYield` / `schemaMode=strict`. We do not invent a WorkerYield from prose.
+2. **Harness not prompt pack?** Yes — `sessionXorContinue` / `buildExecArgs` / `yieldReminderRequest` / snapshot persist live in TypeScript. Role file unchanged.
+3. **One core, many surfaces?** Same argv builder for `plan` / `max` / `team`. CLI and MCP do not parse worker prose.
+4. **Subagents are workers not trees?** Unchanged. One `mcode exec` per worker, one reminder, no grandchild.
+5. **MiniMax-native?** Yes — we follow the live host parser, not our assumption that `--session` + `--continue` continues a named session. `--permission off` stays because the host accepts it; tools are still forbidden in the reminder prompt.
+6. **Host honesty?** **Pass, enforced.** We read the 0.2.1 exclusive check instead of guessing. Exit 2 is invocation. Stderr is persisted so the next live fail is readable. We still do not send `--output-schema` (exit 70). We do not dump raw JSONL into the reminder prompt.
+7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `plan` / `team`.
+8. **Codex-as-platform fit?** Typed yield and evidence stay harness concerns. One reminder. No second retry. No hashline. No npm publish.
 
 ## Failures we refused
 
@@ -183,3 +194,6 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 - Did not loosen `validateWorkerYield` or depend on host `--output-schema`.
 - Did not dump raw host JSONL into the reminder prompt.
 - Did not map host exit 1 (toolUse crash / incomplete) to timeout.
+- Did not keep sending `--session` and `--continue` together after the host named that pair invocation.
+- Did not drop `--permission off` after the host enum confirmed it is legal.
+- Did not let an empty reminder snapshot wipe first-exec assistant text.

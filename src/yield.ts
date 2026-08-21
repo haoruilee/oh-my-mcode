@@ -2,7 +2,8 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { packageRoot, parseJsonObject } from "./util.js";
 import type { FindingSeverity, UsageTotals } from "./types.js";
-import type { ExecResult } from "./mcode.js";
+import { classifyHostExit, type ExecResult, type HostExitKind } from "./mcode.js";
+import type { RunStore } from "./store.js";
 
 export const YIELD_STATUSES = ["ok", "blocked", "failed"] as const;
 export type YieldStatus = (typeof YIELD_STATUSES)[number];
@@ -246,25 +247,79 @@ export interface ExecSnapshot {
   exec_result_answer?: unknown;
   file_hashes?: Record<string, string>;
   exit_code: number;
+  host_exit?: HostExitKind | "unknown";
+  stderr?: string;
   usage?: UsageTotals;
   yield_status?: YieldStatus | null;
 }
 
-/** Typed evidence. Not raw host JSONL. */
+export interface ExecWithReminder extends ExecResult {
+  firstExec?: ExecResult;
+  reminderExec?: ExecResult;
+}
+
+export function collectStderr(result: ExecResult): string {
+  if (result.stderr?.trim()) return result.stderr.trim();
+  return (result.events || [])
+    .filter((event) => event.type === "stderr")
+    .map((event) => (event.text || "").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function reminderHasAssistantText(result: ExecResult): boolean {
+  return Boolean((result.text || "").trim());
+}
+
+/** Typed evidence. Not raw host JSONL. Exit 2 (invocation) keeps stderr so the next live fail is readable. */
 export function buildExecSnapshot(
   result: ExecResult,
   extra: { hashes?: Record<string, string>; yieldStatus?: YieldStatus | null } = {},
 ): ExecSnapshot {
   const answer = extractExecResultAnswer(result);
+  const stderr = collectStderr(result);
   const snapshot: ExecSnapshot = {
     assistant_text: (result.text || "").trim(),
     exit_code: result.exitCode,
+    host_exit: classifyHostExit(result.exitCode),
     yield_status: extra.yieldStatus ?? null,
   };
   if (answer !== undefined) snapshot.exec_result_answer = answer;
   if (extra.hashes && Object.keys(extra.hashes).length > 0) snapshot.file_hashes = extra.hashes;
   if (result.usage) snapshot.usage = result.usage;
+  if (stderr) snapshot.stderr = stderr;
   return snapshot;
+}
+
+export function writeExecPhaseSnapshots(
+  store: RunStore,
+  runId: string,
+  phase: string,
+  result: ExecWithReminder,
+  extra: { hashes?: Record<string, string>; yieldStatus?: YieldStatus | null } = {},
+): void {
+  const first = result.firstExec ?? result;
+  const reminder = result.reminderExec;
+  const firstSnap = buildExecSnapshot(first, {
+    hashes: extra.hashes,
+    yieldStatus: reminder ? null : extra.yieldStatus,
+  });
+  store.writeArtifact(runId, `exec-snapshot-${phase}.json`, `${JSON.stringify(firstSnap, null, 2)}\n`);
+  store.writeTextEvidence(runId, "log", `exec-snapshot-${phase}.json`, JSON.stringify(firstSnap), {
+    command: `mcode exec (${phase})`,
+    notes: "typed exec snapshot (assistant text / exec.result.answer / stderr); not raw JSONL",
+    exit_code: first.exitCode,
+  });
+  if (!reminder) return;
+  const remSnap = buildExecSnapshot(reminder, { hashes: extra.hashes, yieldStatus: extra.yieldStatus });
+  store.writeArtifact(runId, `exec-snapshot-${phase}-reminder.json`, `${JSON.stringify(remSnap, null, 2)}\n`);
+  store.writeTextEvidence(runId, "log", `exec-snapshot-${phase}-reminder.json`, JSON.stringify(remSnap), {
+    command: `mcode exec (${phase} reminder)`,
+    notes: reminderHasAssistantText(reminder)
+      ? "typed reminder snapshot"
+      : "empty reminder; first snapshot kept (assistant_text not overwritten)",
+    exit_code: reminder.exitCode,
+  });
 }
 
 export function extractStructuredOutput(events: { raw?: unknown }[]): { data?: unknown } | undefined {

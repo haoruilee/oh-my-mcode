@@ -378,6 +378,7 @@ test("invalid yield retries once then surfaces a failed yield", async () => {
   assert.equal(requests[1].maxSteps, 1);
   assert.equal(requests[1].permission, "off");
   assert.equal(requests[1].continue, true);
+  assert.equal(requests[1].session, undefined);
   assert.equal(requests[0].maxSteps, ROLE_EXEC_DEFAULTS.builder.maxSteps);
   assert.equal(requests[0].permission, "ask");
   assert.equal(result.yield.status, "failed");

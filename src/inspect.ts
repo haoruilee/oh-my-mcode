@@ -268,7 +268,7 @@ function inspectModelPolicy(workspace: string): InspectResult {
         output_format: "stream-json",
         permission: cfg.permission,
         session: "run.json host_session_id once the host returns one; first exec has no --session (no omm_<runId> fake). --no-session forces cold start",
-        continue: "set when the user passed --continue, or after a real host session id is reused",
+        continue: "set only when the user passed --continue and no host session id is known. --session and --continue are mutually exclusive on mcode 0.2.1 (invocation, exit 2). After a real mvs_ id, send --session only",
         output_schema:
           "omitted by default (mcode 0.2.1 --output-schema is host-internal exit 70). OMM_HOST_OUTPUT_SCHEMA=1 sends the JSON object from schemas/planner-output.schema.json. Yield is validated in TypeScript.",
         file: "verifier/review: latest test log and/or summary.md when present",
