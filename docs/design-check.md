@@ -229,6 +229,9 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 - Did not invent artifact paths when the model omitted `path` / `file`.
 - Did not invent a WorkerYield from blocked-explorer prose.
 - Did not treat object artifacts as a schema loosen — we keep the path string the model already wrote.
+- Did not add a parallel `CLAUDE.md` / Cursor rules dump (pointer file only).
+- Did not copy Codex Clippy / a 300-line lint brief into `AGENTS.md`.
+- Did not npm publish.
 
 ## 19. Root AGENTS.md (contributor operating manual)
 
@@ -240,3 +243,14 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 6. **Host honesty?** Yes — Node 24 sqlite abort and session XOR continue are documented as observed, not wished. Rematch used Node 22 then rebuilt the addon back to 24.
 7. **Hero stays `max`?** Yes. `plan` is the PLAN_REVIEW stop. The user template's hero command is `oh-my-mcode max` / `omm`.
 8. **Codex-as-platform fit?** AGENTS.md is the Codex/Cursor entry; typed yield stays in TypeScript.
+
+## 20. Fold production AGENTS.md bits (source of truth / Commands / Always-Ask-Never)
+
+1. **Verified delivery?** Yes — still a contributor operating manual. Agents still drive `max`/`plan` and leave evidence. The Commands table names the hermetic gate and live rematch fixture. No new loop.
+2. **Harness not prompt pack?** Yes — we did not copy Codex's 300-line lint brief. New host-contract facts still go in `docs/host-reality.md` + a test. `CLAUDE.md` is `@AGENTS.md`, not a second dump.
+3. **One core, many surfaces?** Unchanged. CLI and MCP still `submit`. User template stayed opt-in; one source-of-truth line added.
+4. **Subagents are workers not trees?** Stated. Never: grandchildren / Sisyphus catalog.
+5. **MiniMax-native?** Yes — npm only (no bun/pnpm lockfile rewrite). Hero stays `max`.
+6. **Host honesty?** Yes — Ask before a rematch that rebuilds better-sqlite3 on daily Node 24 `mcode`. Never run live `mcode` under Node 22 with an addon compiled for 137 (or vice versa) without an explicit rebuild. Host contract unchanged.
+7. **Hero stays `max`?** Yes.
+8. **Codex-as-platform fit?** AGENTS.md remains the entry. Typed yield stays in TypeScript. Resist bloating `orchestrator.ts` / `mcode.ts`.

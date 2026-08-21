@@ -1,6 +1,6 @@
 # AGENTS.md — Max Mode (opt-in)
 
-Copy this file to the **root** of a product repo as `AGENTS.md` if you want Codex / Cursor / MiniMax Code to drive verified delivery through **oh-my-mcode**.
+Copy this file to the **root** of a product repo as `AGENTS.md` if you want Codex / Cursor / MiniMax Code to drive verified delivery through **oh-my-mcode**. Once copied, it is the source of truth for agent instructions in that user repo.
 
 `oh-my-mcode install` copies the plugin into `~/.minimax/plugins/oh-my-mcode`. It does **not** write or overwrite a project `AGENTS.md`. This template is opt-in.
 
