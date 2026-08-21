@@ -35,6 +35,7 @@ import {
   TINY_YIELD_FINDINGS_MAX,
   TINY_YIELD_SUMMARY_MAX,
   buildExecSnapshot,
+  coerceWorkerYield,
   crashRetryPrompt,
   extractCompleteYieldFromText,
   extractStructuredOutput,
@@ -850,6 +851,89 @@ test("tiny yield reminder and explorer contract demand a short object", () => {
   assert.match(contract, /Tiny yield JSON/);
   assert.match(contract, /80/);
   assert.match(contract, /at most 2 findings/);
+  assert.match(reminder, /artifacts is string\[\] of paths, not objects/);
+  assert.match(crash, /artifacts is string\[\] of paths, not objects/);
+  assert.match(contract, /artifacts is string\[\] of paths, not objects/);
+  assert.match(reminder, /"artifacts":\["path"\]/);
+});
+
+test("live reminder yield with object artifacts + file_hashes validates after coerce", () => {
+  const liveReminder = {
+    status: "ok",
+    summary: "hello-pkg: hello() missing",
+    findings: [
+      {
+        severity: "note",
+        title: "no hello()",
+        detail: "src exports placeholder; test imports hello()",
+        evidence: ["src/index.js", "test/hello.test.js"],
+      },
+    ],
+    artifacts: [
+      { path: "/Users/harvey/omm-hello-live4/package.json", role: "manifest" },
+      { path: "/Users/harvey/omm-hello-live4/src/index.js", role: "source", note: "exports placeholder()" },
+      { path: "/Users/harvey/omm-hello-live4/test/hello.test.js", role: "test", note: "expects hello()" },
+    ],
+    file_hashes: {
+      "/Users/harvey/omm-hello-live4/src/index.js": "abc123",
+    },
+    invented: "drop me",
+  };
+  const coerced = coerceWorkerYield(liveReminder);
+  assert.deepEqual(coerced.artifacts, [
+    "/Users/harvey/omm-hello-live4/package.json",
+    "/Users/harvey/omm-hello-live4/src/index.js",
+    "/Users/harvey/omm-hello-live4/test/hello.test.js",
+  ]);
+  assert.equal("invented" in coerced, false);
+  assert.equal(typeof coerced.artifacts[0], "string");
+  const parsed = validateWorkerYield(liveReminder);
+  assert.equal(parsed.ok, true, parsed.ok ? "" : parsed.error);
+  assert.equal(parsed.data.status, "ok");
+  assert.deepEqual(parsed.data.artifacts, coerced.artifacts);
+  assert.equal(parsed.data.file_hashes["/Users/harvey/omm-hello-live4/src/index.js"], "abc123");
+  assert.equal("invented" in parsed.data, false);
+
+  const viaFile = validateWorkerYield({
+    status: "ok",
+    summary: "file key",
+    findings: [],
+    artifacts: [{ file: "src/index.js", role: "source" }],
+  });
+  assert.equal(viaFile.ok, true, viaFile.ok ? "" : viaFile.error);
+  assert.deepEqual(viaFile.data.artifacts, ["src/index.js"]);
+
+  const noPath = validateWorkerYield({
+    status: "ok",
+    summary: "no path",
+    findings: [],
+    artifacts: [{ role: "manifest", note: "package.json" }],
+  });
+  assert.equal(noPath.ok, false, "must not invent a path");
+  assert.match(noPath.error, /artifacts must be string\[\]/);
+
+  const numbered = validateWorkerYield({
+    status: "ok",
+    summary: "number",
+    findings: [],
+    artifacts: [1],
+  });
+  assert.equal(numbered.ok, false);
+
+  const missing = validateWorkerYield({
+    status: "ok",
+    summary: "missing artifacts",
+    findings: [],
+  });
+  assert.equal(missing.ok, false);
+
+  const prose = parseWorkerYield({
+    text: "I'll explore the workspace...",
+    events: [],
+    exitCode: 5,
+    rawLines: [],
+  });
+  assert.equal(prose.ok, false, "must not invent a WorkerYield from prose");
 });
 
 test("complete looksLikeYield in assistant_text parses even if more text follows; truncated JSON is not repaired", () => {

@@ -191,6 +191,17 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 7. **Hero stays `max`?** Yes — implementation detail of workers inside `max` / `plan` / `team`.
 8. **Codex-as-platform fit?** Typed yield is still a harness concern. One reminder. One crash retry. No hashline. No npm publish.
 
+## 18. Coerce artifact paths the model already wrote (live reminder on Node 22)
+
+1. **Verified delivery?** Yes — live rematch after PR #13 under Node 22 (no sqlite abort) wrote a **complete** reminder yield (~3.2k) then the parent rejected `artifacts must be string[]`. The model wrote `artifacts: [{path, role, note}, …]` plus `file_hashes`. Status/summary/findings were valid. We now read the `path` (or `file`) string the model already wrote and drop invented fields (`role`, `note`) and unknown yield keys. Missing artifacts, or items with no path, still fail. Prose is still not a yield. Truncated JSON is still not repaired. `schemaMode=strict` on the typed object: required fields and finding shape unchanged.
+2. **Harness not prompt pack?** Yes — `coerceWorkerYield` / `artifactPathOf` are TypeScript. Tiny-yield copy now says `artifacts` is `string[]` of paths, not objects.
+3. **One core, many surfaces?** Same `validateWorkerYield` for `plan` / `max` / `team`. CLI and MCP do not parse worker prose.
+4. **Subagents are workers not trees?** Unchanged. One reminder + one crash retry cap stays.
+5. **MiniMax-native?** Yes — we follow the live reminder JSON, not a second host schema flag.
+6. **Host honesty?** **Pass, enforced.** We do not invent artifacts when the key is missing or an item has no path. We do not invent a WorkerYield from "I'll explore the workspace...". We do not close truncated JSON. Extra keys are ignored, not copied onto the typed yield.
+7. **Hero stays `max`?** Yes.
+8. **Codex-as-platform fit?** Typed yield stays a harness concern. No hashline. No npm publish.
+
 ## Failures we refused
 
 - Did not add a second JSON-RPC next to MCP.
@@ -215,3 +226,6 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 - Did not add a second schema reminder or a crash-retry storm.
 - Did not drop tools or `--max-steps 20` on the first explorer exec.
 - Did not send host `--output-schema` or depend on a Node 22 swap.
+- Did not invent artifact paths when the model omitted `path` / `file`.
+- Did not invent a WorkerYield from blocked-explorer prose.
+- Did not treat object artifacts as a schema loosen — we keep the path string the model already wrote.

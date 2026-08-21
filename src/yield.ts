@@ -28,6 +28,48 @@ export const SCHEMA_MODE = "strict" as const;
 export const TINY_YIELD_SUMMARY_MAX = 80;
 export const TINY_YIELD_FINDINGS_MAX = 2;
 export const SNAPSHOT_STDERR_MAX = 400;
+const YIELD_KNOWN_KEYS = ["status", "summary", "findings", "artifacts", "file_hashes"] as const;
+
+/** Read `path` or `file` the model already wrote. Do not invent a path. */
+export function artifactPathOf(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed || undefined;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const rec = value as Record<string, unknown>;
+  const raw = rec.path ?? rec.file;
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  return trimmed || undefined;
+}
+
+/**
+ * Coerce before validate. Object artifacts → path strings. Unknown yield keys dropped.
+ * Missing artifacts, or items with no path/file, are left as-is so validate fails honestly.
+ */
+export function coerceWorkerYield(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const rec = value as Record<string, unknown>;
+  const known: Record<string, unknown> = {};
+  for (const key of YIELD_KNOWN_KEYS) {
+    if (key in rec) known[key] = rec[key];
+  }
+  if (Array.isArray(known.artifacts)) {
+    const paths: string[] = [];
+    let allPaths = true;
+    for (const item of known.artifacts) {
+      const path = artifactPathOf(item);
+      if (path === undefined) {
+        allPaths = false;
+        break;
+      }
+      paths.push(path);
+    }
+    if (allPaths) known.artifacts = paths;
+  }
+  return known;
+}
 
 export function workerYieldSchemaPath(): string {
   return path.join(packageRoot(), "schemas", "worker-yield.schema.json");
@@ -75,11 +117,12 @@ function asFinding(value: unknown): WorkerFinding | undefined {
 }
 
 export function validateWorkerYield(value: unknown): { ok: true; data: WorkerYield } | { ok: false; error: string } {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  const coerced = coerceWorkerYield(value);
+  if (!coerced || typeof coerced !== "object" || Array.isArray(coerced)) {
     return { ok: false, error: "yield must be a JSON object" };
   }
-  const rec = value as Record<string, unknown>;
-  const extra = Object.keys(rec).filter((key) => !["status", "summary", "findings", "artifacts", "file_hashes"].includes(key));
+  const rec = coerced as Record<string, unknown>;
+  const extra = Object.keys(rec).filter((key) => !YIELD_KNOWN_KEYS.includes(key as (typeof YIELD_KNOWN_KEYS)[number]));
   if (extra.length) return { ok: false, error: `unexpected yield keys: ${extra.join(", ")}` };
   if (!YIELD_STATUSES.includes(rec.status as YieldStatus)) {
     return { ok: false, error: 'status must be "ok" | "blocked" | "failed"' };
@@ -397,16 +440,16 @@ export function parseWorkerYield(result: ExecResult): { ok: true; data: WorkerYi
 }
 
 const TINY_YIELD_OBJECT =
-  '{"status":"ok"|"blocked"|"failed","summary":"≤80 chars","findings":[{"severity":"note","title":"short","detail":"short","evidence":[]}],"artifacts":[]}';
+  '{"status":"ok"|"blocked"|"failed","summary":"≤80 chars","findings":[{"severity":"note","title":"short","detail":"short","evidence":[]}],"artifacts":["path"]}';
 
 export function yieldReminder(error: string): string {
-  return `Yield failed schemaMode=strict: ${error}. Same session continuation. Do not use tools. Do not hash files. Reply with only the tiny yield JSON object ${TINY_YIELD_OBJECT} — summary ≤${TINY_YIELD_SUMMARY_MAX} chars, at most ${TINY_YIELD_FINDINGS_MAX} findings, short title/detail. No prose, no toolUse. Last message is only that JSON. Do not spawn. Do not dump files or raw JSONL.`;
+  return `Yield failed schemaMode=strict: ${error}. Same session continuation. Do not use tools. Do not hash files. Reply with only the tiny yield JSON object ${TINY_YIELD_OBJECT} — summary ≤${TINY_YIELD_SUMMARY_MAX} chars, at most ${TINY_YIELD_FINDINGS_MAX} findings, short title/detail. artifacts is string[] of paths, not objects. No prose, no toolUse. Last message is only that JSON. Do not spawn. Do not dump files or raw JSONL.`;
 }
 
 export function crashRetryPrompt(): string {
-  return `Host crashed mid-yield (native sqlite/assert). Same session continuation. Do not use tools. Do not hash files. Reply with only the tiny yield JSON object ${TINY_YIELD_OBJECT} — summary ≤${TINY_YIELD_SUMMARY_MAX} chars, at most ${TINY_YIELD_FINDINGS_MAX} findings. No prose, no toolUse. Last message is only that JSON. Do not spawn. Do not dump files or raw JSONL. This is not a schema reminder.`;
+  return `Host crashed mid-yield (native sqlite/assert). Same session continuation. Do not use tools. Do not hash files. Reply with only the tiny yield JSON object ${TINY_YIELD_OBJECT} — summary ≤${TINY_YIELD_SUMMARY_MAX} chars, at most ${TINY_YIELD_FINDINGS_MAX} findings. artifacts is string[] of paths, not objects. No prose, no toolUse. Last message is only that JSON. Do not spawn. Do not dump files or raw JSONL. This is not a schema reminder.`;
 }
 
 export function yieldContractLine(): string {
-  return `Tiny yield JSON (required, schemaMode=strict): ${TINY_YIELD_OBJECT} — summary ≤${TINY_YIELD_SUMMARY_MAX} chars, at most ${TINY_YIELD_FINDINGS_MAX} findings. No prose.`;
+  return `Tiny yield JSON (required, schemaMode=strict): ${TINY_YIELD_OBJECT} — summary ≤${TINY_YIELD_SUMMARY_MAX} chars, at most ${TINY_YIELD_FINDINGS_MAX} findings. artifacts is string[] of paths, not objects. No prose.`;
 }
