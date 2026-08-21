@@ -485,6 +485,15 @@ function writeFindings(workspace, runId, filePath) {
   });
 }
 
+function nextEvidenceId(items) {
+  let max = 0;
+  for (const item of items) {
+    const match = /^E(\d+)$/.exec(item.id || "");
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  return `E${max + 1}`;
+}
+
 function addEvidence(workspace, runId, flags) {
   const kind = flags.kind;
   if (!EVIDENCE_KINDS.includes(kind)) fail(`unknown evidence kind: ${kind}`);
@@ -494,11 +503,11 @@ function addEvidence(workspace, runId, flags) {
   return withLock(dir, () => {
     const indexPath = path.join(dir, "evidence/index.json");
     const index = existsSync(indexPath) ? readJson(indexPath) : { run_id: runId, items: [] };
-    const nextNum = index.items.length + 1;
-    const id = `E${nextNum}`;
-    const destName = flags.name || `${id}-${path.basename(src)}`;
+    const destName = flags.name || `${nextEvidenceId(index.items)}-${path.basename(src)}`;
     const destRel = path.posix.join("evidence", destName);
     const destAbs = path.join(dir, "evidence", destName);
+    const existingIdx = index.items.findIndex((item) => item.path === destRel);
+    const id = existingIdx >= 0 ? index.items[existingIdx].id : nextEvidenceId(index.items);
     copyFileSync(src, destAbs);
     const record = {
       id,
@@ -509,7 +518,10 @@ function addEvidence(workspace, runId, flags) {
     if (flags.command) record.command = String(flags.command);
     if (flags["exit-code"] !== undefined) record.exit_code = Number(flags["exit-code"]);
     if (flags.notes) record.notes = String(flags.notes);
-    index.items.push(record);
+    const digest = createHash("sha256").update(readFileSync(destAbs)).digest("hex");
+    if (digest) record.sha256 = digest;
+    if (existingIdx >= 0) index.items[existingIdx] = record;
+    else index.items.push(record);
     writeJson(indexPath, index);
     const eventType = kind === "test" ? "test_ran" : "tool_called";
     appendEventLine(dir, {

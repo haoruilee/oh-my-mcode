@@ -26,6 +26,22 @@ import type {
 import { EVENT_TYPES, PHASES, STATUSES } from "./types.js";
 import { hashesMatch, sha256Bytes, sha256File, type StaleHash } from "./hash.js";
 
+function nextEvidenceId(items: EvidenceRecord[]): string {
+  let max = 0;
+  for (const item of items) {
+    const match = /^E(\d+)$/.exec(item.id);
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  return `E${max + 1}`;
+}
+
+/** Last index row per destination path wins. Superseded rows are ignored. */
+function latestEvidenceByPath(items: EvidenceRecord[]): EvidenceRecord[] {
+  const latest = new Map<string, EvidenceRecord>();
+  for (const item of items) latest.set(item.path, item);
+  return [...latest.values()];
+}
+
 function emptyTasks(runId: string): TaskGraph {
   return {
     run_id: runId,
@@ -323,9 +339,10 @@ export class RunStore {
     if (!existsSync(src)) throw new CliError(`evidence source not found: ${src}`);
     return this.withLock(runId, () => {
       const index = this.loadEvidence(runId);
-      const id = `E${index.items.length + 1}`;
-      const destName = extra.name || `${id}-${path.basename(src)}`;
+      const destName = extra.name || `${nextEvidenceId(index.items)}-${path.basename(src)}`;
       const destRel = path.posix.join("evidence", destName);
+      const existing = index.items.find((item) => item.path === destRel);
+      const id = existing?.id ?? nextEvidenceId(index.items);
       copyFileSync(src, path.join(this.dir(runId), "evidence", destName));
       const record: EvidenceRecord = {
         id,
@@ -338,7 +355,11 @@ export class RunStore {
       if (extra.notes) record.notes = extra.notes;
       const digest = sha256File(path.join(this.dir(runId), destRel));
       if (digest) record.sha256 = digest;
-      index.items.push(record);
+      if (existing) {
+        index.items = index.items.map((item) => (item.path === destRel ? record : item));
+      } else {
+        index.items.push(record);
+      }
       writeJson(path.join(this.dir(runId), "evidence/index.json"), index);
       const eventType: EventType = kind === "test" ? "test_ran" : "tool_called";
       this.appendEventUnlocked(this.dir(runId), {
@@ -379,7 +400,7 @@ export class RunStore {
 
   staleEvidence(runId: string): StaleHash[] {
     const stale: StaleHash[] = [];
-    for (const item of this.loadEvidence(runId).items) {
+    for (const item of latestEvidenceByPath(this.loadEvidence(runId).items)) {
       if (!item.sha256) continue;
       const actual = sha256File(path.join(this.dir(runId), item.path));
       if (!hashesMatch(item.sha256, actual)) {
@@ -387,6 +408,28 @@ export class RunStore {
       }
     }
     return stale;
+  }
+
+  /** Update sha256 / recorded_at for the latest index row of each path. Events stay as-is. */
+  refreshEvidenceHashes(runId: string, paths: string[]): EvidenceRecord[] {
+    const want = new Set(paths);
+    return this.withLock(runId, () => {
+      const index = this.loadEvidence(runId);
+      const refreshed: EvidenceRecord[] = [];
+      for (const item of latestEvidenceByPath(index.items)) {
+        if (!want.has(item.path)) continue;
+        const digest = sha256File(path.join(this.dir(runId), item.path));
+        if (!digest) continue;
+        item.sha256 = digest;
+        item.recorded_at = nowIso();
+        refreshed.push(item);
+      }
+      if (refreshed.length > 0) {
+        writeJson(path.join(this.dir(runId), "evidence/index.json"), index);
+        this.touch(runId, {});
+      }
+      return refreshed;
+    });
   }
 
   loadFileHashes(runId: string): Record<string, string> {

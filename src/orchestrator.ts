@@ -209,6 +209,12 @@ function signatureOf(findings: Findings): string {
   return createHash("sha256").update(key || findings.summary).digest("hex").slice(0, 16);
 }
 
+function isEvidenceStorePath(item: Findings["findings"][number]): boolean {
+  const marked = item.evidence?.[0] || "";
+  if (marked.startsWith("evidence/") || marked === "evidence") return true;
+  return item.title.startsWith("Stale content hash: evidence/");
+}
+
 function shouldRun(current: Phase, min: Phase, resumeFrom?: Phase): boolean {
   const order: Phase[] = [
     "INTAKE",
@@ -628,7 +634,10 @@ async function verifyPhase(
   store.setPhase(runId, "VERIFY", "active");
   emit(opts, "phase VERIFY (deterministic first)");
   let det = await runDeterministicVerify(store, runId, opts.workspace);
-  if (det.findings.some((item) => item.title.startsWith("Stale content hash"))) {
+  const workspaceStale = det.findings.some(
+    (item) => item.title.startsWith("Stale content hash") && !isEvidenceStorePath(item),
+  );
+  if (workspaceStale) {
     emit(opts, "stale content hash; re-running deterministic tests");
     det = await runDeterministicVerify(store, runId, opts.workspace);
   }
