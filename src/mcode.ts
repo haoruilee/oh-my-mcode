@@ -153,7 +153,7 @@ export const ROLE_EXEC_DEFAULTS: Record<
   Role,
   { permission?: Permission; timeoutMs: number; maxSteps: number }
 > = {
-  explorer: { permission: "ask", timeoutMs: 3 * 60 * 1000, maxSteps: 20 },
+  explorer: { permission: "ask", timeoutMs: 3 * 60 * 1000, maxSteps: 20 }, // tiny repo + one JSON step; do not drop
   planner: { permission: "ask", timeoutMs: 3 * 60 * 1000, maxSteps: 16 },
   builder: { timeoutMs: 15 * 60 * 1000, maxSteps: 48 },
   verifier: { permission: "ask", timeoutMs: 5 * 60 * 1000, maxSteps: 20 },

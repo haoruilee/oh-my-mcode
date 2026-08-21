@@ -302,7 +302,7 @@ export function parseWorkerYield(result: ExecResult): { ok: true; data: WorkerYi
 }
 
 export function yieldReminder(error: string): string {
-  return `Yield failed schemaMode=strict: ${error}. Reply with only {"status":"ok"|"blocked"|"failed","summary":"...","findings":[{"severity":"...","title":"...","detail":"...","evidence":[]}],"artifacts":[]}. Do not spawn. Do not dump files.`;
+  return `Yield failed schemaMode=strict: ${error}. Same session continuation. Do not use tools. Do not hash files. Reply with only the yield JSON object {"status":"ok"|"blocked"|"failed","summary":"...","findings":[{"severity":"...","title":"...","detail":"...","evidence":[]}],"artifacts":[]} — no prose, no toolUse. Last message is only that JSON. Do not spawn. Do not dump files or raw JSONL.`;
 }
 
 export function yieldContractLine(): string {

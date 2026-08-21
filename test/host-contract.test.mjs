@@ -30,11 +30,17 @@ import {
   parseWorkerYield,
   validateWorkerYield,
   yieldContractLine,
+  yieldReminder,
 } from "../dist/yield.js";
 import { formatTps, tpsFromExec, TPS_UNMEASURED } from "../dist/tps.js";
 import { classifyExecResult } from "../dist/tool-repair.js";
 import { explorerPrompt, tpsProbePrompt } from "../dist/prompts.js";
-import { spawnSubagent } from "../dist/subagent.js";
+import {
+  spawnSubagent,
+  yieldReminderRequest,
+  YIELD_REMINDER_MAX_STEPS,
+  YIELD_REMINDER_PERMISSION,
+} from "../dist/subagent.js";
 import { runPlan } from "../dist/orchestrator.js";
 import { RunStore } from "../dist/store.js";
 import { copyHelloPkg, HELLO_PKG_FIXTURE } from "./helpers/hello-pkg.mjs";
@@ -189,6 +195,14 @@ test("explorer prompt treats greenfield as ok notes, not blocked", () => {
   assert.match(prompt, /blocked is only for missing permission/);
 });
 
+test("explorer prompt forbids post-map tools; last message is only yield JSON", () => {
+  const prompt = explorerPrompt("add hello()");
+  assert.match(prompt, /LAST message is ONLY the yield JSON/i);
+  assert.match(prompt, /No more tools/);
+  assert.match(prompt, /Do not hash files unless the yield already includes file_hashes/);
+  assert.doesNotMatch(prompt, /package\.json[\s\S]*export function/);
+});
+
 test("stitch 0.2.1 delta.content into a parseable yield and ignore user example JSON", () => {
   const lines = loadFixture("stream-json-mcode-0.2.1-delta-yield.jsonl");
   const events = lines.map((line) => parseStreamLine(line));
@@ -236,8 +250,9 @@ test("yield reminder reuses the extracted mvs_ session (no omm_run_ token)", asy
   const requests = [];
   const store = new RunStore(tmp());
   const run = store.create("reminder session");
+  const firstPrompt = explorerPrompt("look around");
   const client = new StubMcode(async (req) => {
-    requests.push({ session: req.session, prompt: req.prompt, maxSteps: req.maxSteps, timeoutMs: req.timeoutMs });
+    requests.push(req);
     if (requests.length === 1) {
       return {
         text: "partial {",
@@ -257,19 +272,124 @@ test("yield reminder reuses the extracted mvs_ session (no omm_run_ token)", asy
       contract: { task_id: "T1", objective: "look", acceptance: [], constraints: [] },
       permission: "ask",
       cwd: store.workspace,
-      prompt: explorerPrompt("look around"),
+      prompt: firstPrompt,
     },
     { client, store, runId: run.run_id },
   );
   assert.equal(requests.length, 2);
   assert.equal(requests[0].session, undefined);
+  assert.notEqual(requests[0].continue, true);
+  assert.equal(requests[0].permission, "ask");
   assert.equal(requests[1].session, "mvs_e04430ddcafe");
+  assert.equal(requests[1].continue, true);
+  assert.equal(requests[1].maxSteps, YIELD_REMINDER_MAX_STEPS);
+  assert.equal(requests[1].permission, YIELD_REMINDER_PERMISSION);
   assert.match(requests[1].prompt, /schemaMode=strict/);
+  assert.match(requests[1].prompt, /Do not use tools/);
+  assert.match(requests[1].prompt, /only the yield JSON object/);
+  assert.doesNotMatch(requests[1].prompt, /Allowed: read\/search/);
+  assert.doesNotMatch(requests[1].prompt, /look around/);
+  assert.match(requests[1].prompt, /^Yield failed schemaMode=strict:/);
+  assert.match(yieldReminder("missing yield"), /Do not use tools/);
+  assert.match(yieldReminder("missing yield"), /only the yield JSON object/);
+  assert.doesNotMatch(yieldReminder("missing yield"), /Allowed: read\/search/);
   assert.doesNotMatch(requests[1].session || "", /^omm_/);
   assert.equal(store.load(run.run_id).host_session_id, "mvs_e04430ddcafe");
   assert.equal(result.yield.status, "ok");
   assert.equal(requests[0].maxSteps, ROLE_EXEC_DEFAULTS.explorer.maxSteps);
+  assert.ok(requests[0].maxSteps > YIELD_REMINDER_MAX_STEPS);
   assert.equal(requests[0].timeoutMs, ROLE_EXEC_DEFAULTS.explorer.timeoutMs);
+
+  const reminderArgv = buildExecArgs(requests[1]);
+  assert.ok(reminderArgv.includes("--continue"));
+  assert.equal(reminderArgv[reminderArgv.indexOf("--session") + 1], "mvs_e04430ddcafe");
+  assert.equal(maxStepsArg(reminderArgv), String(YIELD_REMINDER_MAX_STEPS));
+  assert.equal(permissionArg(reminderArgv), YIELD_REMINDER_PERMISSION);
+  assert.equal(schemaArg(reminderArgv), undefined);
+});
+
+test("stitched 0.2.1 stream ending on toolUse is not a yield; reminder text-only JSON is", async () => {
+  const firstLines = loadFixture("stream-json-mcode-0.2.1-tooluse-end.jsonl");
+  const reminderLines = loadFixture("stream-json-mcode-0.2.1-reminder-yield.jsonl");
+  const firstEvents = firstLines.map((line) => parseStreamLine(line));
+  const reminderEvents = reminderLines.map((line) => parseStreamLine(line));
+  const first = {
+    text: collectAssistantText(firstEvents),
+    events: firstEvents,
+    exitCode: 1,
+    rawLines: firstLines,
+    structuredOutput: extractStructuredOutput(firstEvents),
+  };
+  const reminder = {
+    text: collectAssistantText(reminderEvents),
+    events: reminderEvents,
+    exitCode: 0,
+    rawLines: reminderLines,
+    structuredOutput: extractStructuredOutput(reminderEvents),
+  };
+
+  assert.match(first.text, /placeholder/);
+  assert.match(first.text, /hello\(\)/);
+  assert.equal(classifyHostExit(first.exitCode), "crash");
+  assert.notEqual(classifyHostExit(first.exitCode), "timeout");
+  const fromProse = parseWorkerYield(first);
+  assert.equal(fromProse.ok, false, "must not invent a WorkerYield from explorer prose");
+  assert.equal(extractStructuredYield(first), undefined);
+
+  const fromReminder = parseWorkerYield(reminder);
+  assert.equal(fromReminder.ok, true, fromReminder.ok ? "" : fromReminder.error);
+  assert.equal(fromReminder.data.status, "ok");
+  assert.match(fromReminder.data.summary, /hello\(\) missing/);
+  assert.equal(fromReminder.data.findings[0].severity, "note");
+  assert.ok(!reminderEvents.some((event) => (event.type || "").toLowerCase().includes("tool")));
+
+  const shaped = yieldReminderRequest(
+    {
+      role: "explorer",
+      contract: { task_id: "T1", objective: "look", acceptance: [], constraints: [] },
+      permission: "smart",
+      cwd: tmp(),
+      prompt: explorerPrompt("add hello()"),
+      maxSteps: ROLE_EXEC_DEFAULTS.explorer.maxSteps,
+    },
+    first,
+  );
+  assert.equal(shaped.session, "mvs_c26375a905a64bbc8b25ae63a635c812");
+  assert.equal(shaped.continue, true);
+  assert.equal(shaped.maxSteps, YIELD_REMINDER_MAX_STEPS);
+  assert.equal(shaped.permission, YIELD_REMINDER_PERMISSION);
+  assert.notEqual(shaped.maxSteps, ROLE_EXEC_DEFAULTS.explorer.maxSteps);
+
+  const requests = [];
+  const store = new RunStore(tmp());
+  const run = store.create("tooluse then yield");
+  const client = new StubMcode(async (req) => {
+    requests.push(req);
+    return requests.length === 1 ? first : reminder;
+  });
+  const spawned = await spawnSubagent(
+    {
+      role: "explorer",
+      contract: { task_id: "T1", objective: "look", acceptance: [], constraints: [] },
+      permission: "smart",
+      cwd: store.workspace,
+      prompt: explorerPrompt("add a hello function that returns the string hello"),
+    },
+    { client, store, runId: run.run_id },
+  );
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].maxSteps, ROLE_EXEC_DEFAULTS.explorer.maxSteps);
+  assert.equal(requests[0].permission, "smart");
+  assert.notEqual(requests[0].continue, true);
+  assert.equal(requests[1].session, "mvs_c26375a905a64bbc8b25ae63a635c812");
+  assert.equal(requests[1].continue, true);
+  assert.equal(requests[1].maxSteps, 1);
+  assert.equal(requests[1].permission, "off");
+  assert.match(requests[1].prompt, /Do not use tools/);
+  assert.doesNotMatch(requests[1].prompt, /add a hello function/);
+  assert.equal(spawned.yield.status, "ok");
+  assert.match(spawned.yield.summary, /hello\(\) missing/);
+  assert.equal(validateWorkerYield(spawned.yield).ok, true);
 });
 
 test("TPS reports unmeasured when host omits message.usage (no fake tok/s)", () => {

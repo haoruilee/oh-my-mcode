@@ -15,10 +15,15 @@ import {
   type WorkerYield,
 } from "./yield.js";
 
+/** Reminder exec: one text-only step. Host permission `off` cannot start a tool loop. */
+export const YIELD_REMINDER_MAX_STEPS = 1;
+export const YIELD_REMINDER_PERMISSION: Permission = "off";
+
 export interface SpawnRequest {
   role: Role;
   contract: TaskContract;
   session?: string;
+  continue?: boolean;
   permission: Permission;
   cwd: string;
   prompt?: string;
@@ -88,6 +93,21 @@ export async function spawnSubagent(req: SpawnRequest, ctx: SpawnContext): Promi
   return spawnFrame.run({ role: req.role, depth: 1 }, async () => spawnOnce(req, ctx));
 }
 
+/**
+ * One reminder after an invalid yield. Continuation of the same host session.
+ * Not a fresh explore: no tools, maxSteps 1, permission off.
+ */
+export function yieldReminderRequest(req: SpawnRequest, first: ExecResult): SpawnRequest {
+  const hostSession = extractHostSessionId(first);
+  return {
+    ...req,
+    session: hostSession && !isSynthesizedSessionToken(hostSession) ? hostSession : req.session,
+    continue: true,
+    maxSteps: YIELD_REMINDER_MAX_STEPS,
+    permission: YIELD_REMINDER_PERMISSION,
+  };
+}
+
 async function execOnce(req: SpawnRequest, ctx: SpawnContext, prompt: string): Promise<ExecResult> {
   const execReq: ExecRequest = applyRoleDefaults({
     cwd: req.cwd,
@@ -95,6 +115,7 @@ async function execOnce(req: SpawnRequest, ctx: SpawnContext, prompt: string): P
     role: req.role,
     permission: req.permission,
     session: req.session,
+    continue: req.continue,
     files: req.files,
     timeoutMs: req.timeoutMs,
     maxSteps: req.maxSteps,
@@ -134,10 +155,9 @@ async function spawnOnce(req: SpawnRequest, ctx: SpawnContext): Promise<SpawnRes
   let result = await execOnce(req, ctx, prompt);
   let parsed = resolveYield(result, req.role);
   if (!parsed.ok) {
-    const hostSession = extractHostSessionId(result);
-    const reminderReq =
-      hostSession && !isSynthesizedSessionToken(hostSession) ? { ...req, session: hostSession } : req;
-    result = await execOnce(reminderReq, ctx, `${prompt}\n\n${yieldReminder(parsed.error)}`);
+    // Continuation only. Do not re-send the explore contract (that invited a tool loop).
+    // Do not dump first-exec JSONL or assistant prose into this prompt.
+    result = await execOnce(yieldReminderRequest(req, result), ctx, yieldReminder(parsed.error));
     parsed = resolveYield(result, req.role);
   }
   const workerYield = parsed.ok
