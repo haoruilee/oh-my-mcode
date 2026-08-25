@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
-import { assertUnder, safeId } from "./safe-path.js";
+import { assertRunId, assertUnder, safeId } from "./safe-path.js";
 
 export interface WorktreeInfo {
   path: string;
@@ -25,12 +25,12 @@ export function isGitRepo(workspace: string): boolean {
 
 export function worktreePath(workspace: string, runId: string, taskId: string): string {
   const root = path.resolve(workspace, ".minimax", "worktrees");
-  const dest = path.resolve(root, safeId(runId, "id_sanitized"), safeId(taskId, "id_sanitized"));
+  const dest = path.resolve(root, assertRunId(runId), safeId(taskId, "id_sanitized"));
   return assertUnder(root, dest);
 }
 
 export function worktreeBranch(runId: string, taskId: string): string {
-  return `omm/${safeId(runId, "id_sanitized")}/${safeId(taskId, "id_sanitized")}`;
+  return `omm/${assertRunId(runId)}/${safeId(taskId, "id_sanitized")}`;
 }
 
 export function createWorktree(workspace: string, runId: string, taskId: string): WorktreeInfo {
@@ -78,7 +78,7 @@ export function removeWorktree(workspace: string, runId: string, taskId: string)
 
 export function cleanupRunWorktrees(workspace: string, runId: string): void {
   const trees = path.resolve(workspace, ".minimax", "worktrees");
-  const root = assertUnder(trees, path.resolve(trees, safeId(runId, "id_sanitized")));
+  const root = assertUnder(trees, path.resolve(trees, assertRunId(runId)));
   if (!existsSync(root)) return;
   for (const name of readdirSync(root)) {
     removeWorktree(workspace, runId, name);

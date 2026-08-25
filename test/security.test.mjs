@@ -1,5 +1,14 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -137,6 +146,99 @@ test("planner cannot invent a verify command when goal+workspace have none", () 
     "improve the app",
   );
   assert.ok(!merged.some((item) => item.command), `planner invented ${JSON.stringify(merged)}`);
+});
+
+test("dir/resolveId/load refuse traversal runId before path join (HIGH 2b)", () => {
+  const workspace = tmp("omm-sec-runid-");
+  const store = new RunStore(workspace);
+  const pwnName = `pwned-runid-${process.pid}`;
+  const outside = path.join(path.dirname(workspace), pwnName);
+  const payloads = [
+    `../../../${pwnName}`,
+    "../../../../tmp/pwn",
+    "../pwn",
+    "run_../../../tmp/pwn",
+    "run_foo/../pwn",
+    "/tmp/pwn",
+    "not-a-run-id",
+  ];
+  for (const id of payloads) {
+    assert.throws(
+      () => store.dir(id),
+      (error) => error instanceof CliError && /invalid run id/.test(error.message),
+    );
+    assert.throws(
+      () => store.resolveId(id),
+      (error) => error instanceof CliError && /invalid run id/.test(error.message),
+    );
+    assert.throws(
+      () => store.load(id),
+      (error) => error instanceof CliError && /invalid run id/.test(error.message),
+    );
+    assert.throws(
+      () => store.withLock(id, () => "no"),
+      (error) => error instanceof CliError && /invalid run id/.test(error.message),
+    );
+  }
+  const prev = process.env.OMM_RUN_ID;
+  process.env.OMM_RUN_ID = "../../../../tmp/pwn";
+  try {
+    assert.throws(
+      () => store.resolveId(),
+      (error) => error instanceof CliError && /invalid run id/.test(error.message),
+    );
+  } finally {
+    if (prev === undefined) delete process.env.OMM_RUN_ID;
+    else process.env.OMM_RUN_ID = prev;
+  }
+  assert.ok(!existsSync(outside), `mkdir outside runsRoot: ${outside}`);
+  assert.ok(!existsSync(path.join(store.runsRoot(), pwnName)));
+  assert.ok(!existsSync(path.join(store.runsRoot(), "pwn")));
+});
+
+test("writeTextEvidence/addEvidence do not write through dest symlink (HIGH 2c)", () => {
+  const workspace = tmp("omm-sec-sl-");
+  const store = new RunStore(workspace);
+  const run = store.create("evidence dest must not be a symlink");
+  const outside = path.join(workspace, "outside-secret");
+  writeFileSync(outside, "KEEP\n");
+  const dest = path.join(store.dir(run.run_id), "evidence", "A1-test.log");
+  symlinkSync(outside, dest);
+
+  store.writeTextEvidence(run.run_id, "test", "A1-test.log", "PWN\n");
+  assert.equal(readFileSync(outside, "utf8"), "KEEP\n", "writeTextEvidence wrote through dest symlink");
+  assert.equal(lstatSync(dest).isSymbolicLink(), false);
+  assert.match(readFileSync(dest, "utf8"), /PWN/);
+
+  writeFileSync(outside, "KEEP\n");
+  rmSync(dest);
+  symlinkSync(outside, dest);
+  const src = path.join(workspace, "src.log");
+  writeFileSync(src, "PWN2\n");
+  store.addEvidence(run.run_id, "log", src, { name: "A1-test.log" });
+  assert.equal(readFileSync(outside, "utf8"), "KEEP\n", "addEvidence wrote through dest symlink");
+  assert.equal(lstatSync(dest).isSymbolicLink(), false);
+  assert.match(readFileSync(dest, "utf8"), /PWN2/);
+});
+
+test("addEvidence refuses when evidence/ parent is a symlink that escapes the run dir", () => {
+  const workspace = tmp("omm-sec-epar-");
+  const store = new RunStore(workspace);
+  const run = store.create("evidence parent escape");
+  const outsideDir = path.join(workspace, "escaped-evidence");
+  mkdirSync(outsideDir);
+  const planted = path.join(outsideDir, "A1-test.log");
+  writeFileSync(planted, "KEEP\n");
+  const evidence = path.join(store.dir(run.run_id), "evidence");
+  rmSync(evidence, { recursive: true });
+  symlinkSync(outsideDir, evidence);
+  const src = path.join(workspace, "src.log");
+  writeFileSync(src, "PWN\n");
+  assert.throws(
+    () => store.addEvidence(run.run_id, "log", src, { name: "A1-test.log" }),
+    (error) => error instanceof CliError,
+  );
+  assert.equal(readFileSync(planted, "utf8"), "KEEP\n");
 });
 
 test("writeArtifact refuses path escape and does not create a file outside the run dir", () => {

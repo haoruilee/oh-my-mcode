@@ -1,9 +1,20 @@
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, realpathSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { CliError } from "./util.js";
 
-/** Planner/task/acceptance/run path ids. `T1`, `A1`, `execute-T2`, `run_…`. */
+/** Same family as `parseRunAddress` / `newRunId`. Checked before any path join. */
+export const RUN_ID_RE = /^run_[A-Za-z0-9]+$/;
+
+/** Planner/task/acceptance/phase path ids. `T1`, `A1`, `execute-T2`. Not run ids. */
 export const SAFE_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
+
+export function assertRunId(id: string): string {
+  const trimmed = typeof id === "string" ? id.trim() : "";
+  if (!RUN_ID_RE.test(trimmed)) {
+    throw new CliError(`invalid run id: ${id}`, 2);
+  }
+  return trimmed;
+}
 
 export function isSafeId(id: string): boolean {
   return typeof id === "string" && SAFE_ID_RE.test(id);
@@ -76,4 +87,29 @@ export function assertSafeDestName(name: string): string {
     throw new CliError(`unsafe evidence name: ${name}`);
   }
   return name;
+}
+
+/** Unlink a dest symlink only. Never `rmSync` through the target. */
+export function unlinkIfSymlink(abs: string): void {
+  try {
+    if (lstatSync(abs).isSymbolicLink()) unlinkSync(abs);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+}
+
+/**
+ * Confine dest under root, then drop a dest symlink (confused-deputy write-through)
+ * before any non-rename write. Parent realpath must still stay under root.
+ */
+export function prepareWriteDest(root: string, destAbs: string): string {
+  const resolvedRoot = path.resolve(root);
+  const resolvedDest = path.resolve(destAbs);
+  const prefix = resolvedRoot.endsWith(path.sep) ? resolvedRoot : `${resolvedRoot}${path.sep}`;
+  if (resolvedDest !== resolvedRoot && !resolvedDest.startsWith(prefix)) {
+    throw new CliError(`path escapes root: ${destAbs}`);
+  }
+  unlinkIfSymlink(resolvedDest);
+  return assertUnder(root, resolvedDest);
 }

@@ -28,7 +28,14 @@ import type {
 import { EVENT_TYPES, PHASES, STATUSES } from "./types.js";
 import { hashesMatch, sha256Bytes, sha256File, type StaleHash } from "./hash.js";
 import { seedGoalAcceptance } from "./acceptance.js";
-import { assertSafeDestName, assertUnder, isSafeId, safeId } from "./safe-path.js";
+import {
+  assertRunId,
+  assertSafeDestName,
+  assertUnder,
+  prepareWriteDest,
+  RUN_ID_RE,
+  unlinkIfSymlink,
+} from "./safe-path.js";
 import {
   blockGoal as applyBlockGoal,
   completeGoal as applyCompleteGoal,
@@ -90,7 +97,7 @@ export class RunStore {
   }
 
   dir(runId: string): string {
-    const id = isSafeId(runId) ? runId : safeId(runId, "id_sanitized");
+    const id = assertRunId(runId);
     const dest = path.resolve(this.runsRoot(), id);
     return assertUnder(this.runsRoot(), dest);
   }
@@ -99,7 +106,7 @@ export class RunStore {
     const root = this.runsRoot();
     if (!existsSync(root)) return [];
     return readdirSync(root)
-      .filter((name) => name.startsWith("run_") && existsSync(path.join(root, name, "run.json")))
+      .filter((name) => RUN_ID_RE.test(name) && existsSync(path.join(root, name, "run.json")))
       .sort((a, b) => {
         const aTime = statSync(path.join(root, a, "run.json")).mtimeMs;
         const bTime = statSync(path.join(root, b, "run.json")).mtimeMs;
@@ -112,8 +119,8 @@ export class RunStore {
   }
 
   resolveId(runId?: string): string {
-    if (runId) return runId;
-    if (process.env.OMM_RUN_ID) return process.env.OMM_RUN_ID;
+    const raw = runId?.trim() || process.env.OMM_RUN_ID?.trim();
+    if (raw) return assertRunId(raw);
     const latest = this.latestId();
     if (!latest) throw new CliError("no runs in this workspace; create one first");
     return latest;
@@ -206,6 +213,7 @@ export class RunStore {
     const dir = this.dir(runId);
     mkdirSync(dir, { recursive: true });
     const lockPath = path.join(dir, ".lock");
+    unlinkIfSymlink(lockPath);
     if (existsSync(lockPath)) {
       const ageMs = Date.now() - statSync(lockPath).mtimeMs;
       if (ageMs < 30_000) throw new CliError(`run directory is locked: ${lockPath}`);
@@ -350,7 +358,7 @@ export class RunStore {
   writeArtifact(runId: string, relativePath: string, contents: string): string {
     return this.withLock(runId, () => {
       const root = this.dir(runId);
-      const dest = assertUnder(root, path.resolve(root, relativePath));
+      const dest = prepareWriteDest(root, path.resolve(root, relativePath));
       writeAtomic(dest, contents.endsWith("\n") ? contents : `${contents}\n`);
       this.touch(runId, {});
       return dest;
@@ -422,7 +430,8 @@ export class RunStore {
       const existing = index.items.find((item) => item.path === destRel);
       const id = existing?.id ?? nextEvidenceId(index.items);
       const evidenceRoot = path.join(this.dir(runId), "evidence");
-      const destAbs = assertUnder(evidenceRoot, path.resolve(evidenceRoot, destName));
+      mkdirSync(evidenceRoot, { recursive: true });
+      const destAbs = prepareWriteDest(this.dir(runId), path.resolve(evidenceRoot, destName));
       copyFileSync(src, destAbs);
       const record: EvidenceRecord = {
         id,
@@ -465,11 +474,12 @@ export class RunStore {
     assertSafeDestName(name);
     const tmp = path.join(this.dir(runId), "evidence", `.incoming-${process.pid}`);
     mkdirSync(path.dirname(tmp), { recursive: true });
-    writeFileSync(tmp, contents.endsWith("\n") ? contents : `${contents}\n`);
+    const incoming = prepareWriteDest(this.dir(runId), tmp);
+    writeFileSync(incoming, contents.endsWith("\n") ? contents : `${contents}\n`);
     try {
-      return this.addEvidence(runId, kind, tmp, { ...extra, name });
+      return this.addEvidence(runId, kind, incoming, { ...extra, name });
     } finally {
-      if (existsSync(tmp)) rmSync(tmp);
+      if (existsSync(incoming)) rmSync(incoming);
     }
   }
 
