@@ -71,8 +71,14 @@ function summarizeGoalCriterion(goal: string, command: string): string {
   return `${trimmed.slice(0, 180)}… (${command})`;
 }
 
-/** Planner may add tasks; it must not drop a seeded runnable command. */
+/**
+ * Planner may add tasks; it must not drop a seeded runnable command,
+ * and must not invent a command when goal+workspace have none.
+ */
 export function mergeAcceptance(seeded: AcceptanceItem[], planned: AcceptanceItem[]): AcceptanceItem[] {
+  if (!hasRunnableAcceptance(seeded)) {
+    return seeded.length > 0 ? seeded : planned;
+  }
   const plannedRunnable = planned.filter((item) => item.command?.trim());
   if (plannedRunnable.length > 0) {
     return planned.map((item) => {
@@ -81,8 +87,7 @@ export function mergeAcceptance(seeded: AcceptanceItem[], planned: AcceptanceIte
       return { ...item, source: item.source || match?.source };
     });
   }
-  if (hasRunnableAcceptance(seeded)) return seeded;
-  return planned.length > 0 ? planned : seeded;
+  return seeded;
 }
 
 export function formatAcceptanceAnnouncement(runId: string, items: AcceptanceItem[]): string[] {

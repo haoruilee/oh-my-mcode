@@ -524,6 +524,7 @@ async function drive(
       emit(opts, "phase DISCOVER (skipped: goal already concrete)");
       const acceptance = store.loadTasks(runId).acceptance;
       const body = skippedDiscoverText(run.goal, acceptance);
+      store.writeArtifact(runId, "discover.md", body);
       store.writeTextEvidence(runId, "log", "discover.md", body, {
         notes: "skipped discover; goal already concrete + detected test/build; not a repo map",
       });

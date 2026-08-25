@@ -146,7 +146,7 @@ Test the contract the system exposes — not the easiest internal detail to asse
 - **Name the failure mode** or do not add the test. What does a consumer observe if this regresses?
 - **No source-grep tests.** Do not read `src/*.ts` and `expect(src).toContain(...)`.
 - **No invented yield in tests.** Use `test/helpers/yield.mjs`. Do not synthesize a WorkerYield from prose.
-- Good: argv / exit / stream / yield transform, phase stop (`plan` ≠ PLAN_REVIEW on failed yield), Accept refused without evidence, install does not write a project `AGENTS.md`, host-present install does not invoke the host installer, concrete `max` does not spawn explorer.
+- Good: argv / exit / stream / yield transform, phase stop (`plan` ≠ PLAN_REVIEW on failed yield), Accept refused without evidence, install does not write a project `AGENTS.md`, host-present install does not invoke the host installer, concrete `max` does not spawn explorer. Acceptance `npm test` must not inherit parent `NODE_TEST_CONTEXT` (false Accept).
 - Bad: “file contains this string”, success passthrough, prompt-boilerplate asserts.
 
 ## DESIGN CHECK

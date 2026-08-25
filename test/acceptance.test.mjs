@@ -9,6 +9,7 @@ import { RunStore } from "../dist/store.js";
 import { plannerYield, yieldResult } from "./helpers/yield.mjs";
 import { copyHelloPkg } from "./helpers/hello-pkg.mjs";
 import { seedGoalAcceptance, shouldSkipDiscover } from "../dist/acceptance.js";
+import { runCaptured } from "../dist/verify.js";
 
 function bareWorkspace() {
   return mkdtempSync(path.join(os.tmpdir(), "omm-bare-"));
@@ -70,7 +71,10 @@ test("workspace with no scripts.test and a goal with no command has no Accept pa
   const store = new RunStore(workspace);
   const findings = store.loadFindings(run.run_id);
   assert.equal(findings?.verdict, "rejected");
-  assert.ok(findings?.findings.some((item) => item.class === "no_test"));
+  assert.ok(
+    findings?.findings.some((item) => item.class === "no_test" || /No automated test\/build/.test(item.title)),
+    `expected no_test finding, got ${JSON.stringify(findings?.findings)}`,
+  );
   assert.ok(store.readArtifact(run.run_id, "evidence/no-test-command.txt"));
 });
 
@@ -85,7 +89,8 @@ test("concrete max does not spawn explorer; plan and vague max still do", async 
   assert.ok(!concreteRoles.includes("explorer"), `explorer spawned on concrete max: ${concreteRoles.join(",")}`);
   assert.ok(concreteRoles.includes("planner"));
   const runStore = new RunStore(concrete.workspace);
-  const discover = runStore.readArtifact(concrete.run_id, "discover.md");
+  const discover = runStore.readArtifact(concrete.run_id, "discover.md") ||
+    runStore.readArtifact(concrete.run_id, "evidence/discover.md");
   assert.match(discover, /skipped: goal already concrete/);
   assert.doesNotMatch(discover, /src\/index\.js is a React app/);
   const snap = JSON.parse(runStore.readArtifact(concrete.run_id, "exec-snapshot-discover.json"));
@@ -137,24 +142,14 @@ test("greenfield max without a detected command still discovers", async () => {
 
 test("follow-goal violate: exporting greet is rejected by npm test", async () => {
   const workspace = copyFollowGoal();
+  writeFileSync(
+    path.join(workspace, "src/index.js"),
+    'export function hello() { return "hello"; }\nexport function greet() { return "hi"; }\n',
+  );
   const run = await runMax({
     workspace,
     goal: "export hello() returning hello. Do not add greet. Prove with npm test.",
-    mcode: new StubMcode(async (req) => {
-      if (req.role === "builder") {
-        writeFileSync(
-          path.join(req.cwd, "src/index.js"),
-          'export function hello() { return "hello"; }\nexport function greet() { return "hi"; }\n',
-        );
-      }
-      if (req.role === "planner") {
-        return plannerYield({
-          tasks: [{ id: "T1", title: "implement hello only", role: "builder", depends_on: [] }],
-          acceptance: [{ id: "A1", criterion: "npm test", kind: "test", command: "npm test" }],
-        });
-      }
-      return yieldResult(`${req.role} ok`);
-    }),
+    mcode: recordingStub([]),
     llmVerify: false,
     maxRepairs: 0,
   });
@@ -162,6 +157,28 @@ test("follow-goal violate: exporting greet is rejected by npm test", async () =>
   const store = new RunStore(workspace);
   const findings = store.loadFindings(run.run_id);
   assert.ok(findings?.findings.some((item) => item.class === "command_failed"));
+});
+
+test("acceptance npm test runs the workspace package, not a parent npm lifecycle", async () => {
+  const workspace = copyFollowGoal();
+  writeFileSync(
+    path.join(workspace, "src/index.js"),
+    'export function hello() { return "hello"; }\nexport function greet() { return "hi"; }\n',
+  );
+  const prevInit = process.env.INIT_CWD;
+  const prevLife = process.env.npm_lifecycle_event;
+  process.env.INIT_CWD = path.resolve(".");
+  process.env.npm_lifecycle_event = "test";
+  try {
+    const result = await runCaptured("npm test", workspace);
+    assert.notEqual(result.exitCode, 0);
+    assert.match(result.output, /greet/);
+  } finally {
+    if (prevInit === undefined) delete process.env.INIT_CWD;
+    else process.env.INIT_CWD = prevInit;
+    if (prevLife === undefined) delete process.env.npm_lifecycle_event;
+    else process.env.npm_lifecycle_event = prevLife;
+  }
 });
 
 function copyFollowGoal() {

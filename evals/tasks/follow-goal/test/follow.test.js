@@ -8,5 +8,6 @@ test("exports hello() returning hello", () => {
 });
 
 test("does not export greet", () => {
-  assert.equal(Object.hasOwn(mod, "greet"), false);
+  assert.equal(typeof mod.greet, "undefined");
+  assert.equal("greet" in mod, false);
 });

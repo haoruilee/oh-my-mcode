@@ -61,6 +61,20 @@ export function detectProjectCommands(workspace: string): DetectedCommands {
   return { source: "none" };
 }
 
+/**
+ * Drop parent npm lifecycle and `NODE_TEST_CONTEXT` so an acceptance
+ * `npm test` / `node --test` runs the workspace suite.
+ * Failure modes: nested npm hits the harness package; parent `node --test`
+ * makes the fixture's `node --test` skip files and exit 0 (false Accept).
+ */
+export function cleanSpawnEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env = { ...base };
+  for (const key of Object.keys(env)) {
+    if (key === "INIT_CWD" || key.startsWith("npm_") || key.startsWith("NODE_TEST")) delete env[key];
+  }
+  return env;
+}
+
 export async function runCaptured(
   command: string,
   cwd: string,
@@ -69,7 +83,7 @@ export async function runCaptured(
   return new Promise((resolve, reject) => {
     const child = spawn(command, {
       cwd,
-      env: process.env,
+      env: cleanSpawnEnv(),
       shell: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
