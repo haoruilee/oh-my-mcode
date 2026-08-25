@@ -417,9 +417,25 @@ function announceAcceptance(store: RunStore, runId: string, opts: OrchestratorOp
   for (const line of formatAcceptanceAnnouncement(runId, acceptance)) emit(opts, line);
 }
 
+function isGuardBlocked(run: RunRecord): boolean {
+  return run.status === "blocked" || run.goal_state?.phase === "blocked";
+}
+
+/** Do not flip a guard-blocked run back to active. Human starts a new run. */
+function refuseIfBlocked(opts: OrchestratorOptions, run: RunRecord): RunRecord | undefined {
+  if (!isGuardBlocked(run)) return undefined;
+  const reason = run.goal_state?.blockedReason;
+  const code = reason?.code || "blocked";
+  const message = reason?.message || `run ${run.run_id} is blocked`;
+  emit(opts, `blocked (${code}): ${message}`);
+  return run;
+}
+
 export async function runMax(opts: OrchestratorOptions): Promise<RunRecord> {
   const store = new RunStore(opts.workspace);
   const run = opts.runId ? store.load(opts.runId) : store.create(opts.goal || "", { maxRepairs: opts.maxRepairs ?? 3 });
+  const blocked = refuseIfBlocked(opts, run);
+  if (blocked) return blocked;
   rememberOptions(store, run.run_id, { ...opts, workflow: opts.workflow || (opts.team ? "team" : "max") });
   applyRequestedSession(store, run.run_id, opts);
   emit(opts, `run ${run.run_id} at ${store.dir(run.run_id)}`);
@@ -435,6 +451,8 @@ export async function runTeam(opts: OrchestratorOptions): Promise<RunRecord> {
 export async function runPlan(opts: OrchestratorOptions): Promise<RunRecord> {
   const store = new RunStore(opts.workspace);
   const run = opts.runId ? store.load(opts.runId) : store.create(opts.goal || "", { maxRepairs: opts.maxRepairs ?? 3 });
+  const blocked = refuseIfBlocked(opts, run);
+  if (blocked) return blocked;
   rememberOptions(store, run.run_id, { ...opts, workflow: opts.workflow || "plan" });
   applyRequestedSession(store, run.run_id, opts);
   emit(opts, `run ${run.run_id} at ${store.dir(run.run_id)}`);
@@ -456,6 +474,8 @@ export async function runResume(opts: OrchestratorOptions): Promise<RunRecord> {
   const store = new RunStore(opts.workspace);
   const runId = store.resolveId(opts.runId);
   const run = store.load(runId);
+  const blocked = refuseIfBlocked(opts, run);
+  if (blocked) return blocked;
   store.appendEvent(runId, "run_resumed", { from_phase: run.phase, goal: run.goal });
   emit(opts, `resuming ${runId} from ${run.phase}`);
   if (run.phase === "ACCEPT" || run.phase === "RELEASE") {
@@ -550,6 +570,8 @@ async function drive(
   const concurrency = opts.concurrency ?? 2;
   let run = store.load(runId);
   if (run.status === "cancelled") return run;
+  const blocked = refuseIfBlocked(opts, run);
+  if (blocked) return blocked;
 
   if (shouldRun(run.phase, "DISCOVER", ctrl.resumeFrom) && workflow.phases.includes("DISCOVER")) {
     store.setPhase(runId, "DISCOVER");
@@ -655,6 +677,10 @@ async function drive(
   while (true) {
     run = store.load(runId);
     if (run.phase === "ACCEPT" || run.status === "cancelled") break;
+    if (isGuardBlocked(run)) {
+      refuseIfBlocked(opts, run);
+      break;
+    }
 
     store.setPhase(runId, "EXECUTE", "active");
     emit(opts, "phase EXECUTE");

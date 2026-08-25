@@ -244,6 +244,7 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 - Did not let a workspace config file set `permission: full`.
 - Did not rewrite ProcessMcode / host env (mcode needs credentials).
 - Did not add Cordis, hooks, a sixth worker, or live `mcode` in CI.
+- Did not let `omm resume` / `max --run-id` unblock a guard-blocked run or start another host exec.
 
 ## 19. Root AGENTS.md (contributor operating manual)
 
@@ -329,3 +330,16 @@ Threat model: planner `WorkerYield` / task graph is untrusted (shell strings, `.
 6. **Host honesty?** **Pass, enforced.** We do not spawn non-allowlisted strings (`shell: false` on the closed argv map only). We do not follow `../` artifact / worktree ids out of the run dir. We do not let a workspace file raise permission to `full`. We still run the project's own `npm test` when that is the named/detected command. Tests are exploit-shaped: `touch PWNED && npm test` must not create `PWNED`; `writeArtifact(..., "../../outside.txt")` must not create a file outside the run dir.
 7. **Hero stays `max`?** Yes. Allowlist / confine are implementation details of VERIFY and the run store.
 8. **Codex-as-platform fit?** Approvals stay `--permission` / verifier-only Accepted. Workspace config cannot mint `full`. Typed yield stays strict. No live `mcode` in CI.
+
+## 26. Guard-blocked runs stay blocked (`resume` / `max --run-id`)
+
+Threat model: after `repeat-finding` / `repair-cap` / `host-crash`, a human (or TUI) can type `omm resume` or `omm max --run-id`. That must not undo the guard. We do not invent DSH pause/resume/clear. A new attempt is a new run.
+
+1. **Verified delivery?** Yes — the guard stop is durable. Resume cannot burn another host exec or flip `status` back to `active` so Accept could happen without a new verified loop.
+2. **Harness not prompt pack?** Yes — `refuseIfBlocked` is TypeScript in `runResume` / `runMax` / `drive`. Role files unchanged.
+3. **One core, many surfaces?** CLI `resume` and `max --run-id` share `runResume` / `runMax`. `drive` refuses again so no second path.
+4. **Subagents are workers not trees?** Unchanged. Refusal means zero extra `mcode exec`, not a grandchild.
+5. **MiniMax-native?** Yes — we stay the harness. Hero stays `max`. No DSH Goal tools.
+6. **Host honesty?** **Pass, enforced.** Blocked run + `runResume` keeps `status=blocked`, `repair_count` unchanged, exec count unchanged. Emit the original `blockedReason.code` / message. We do not start a goal round on a blocked snapshot.
+7. **Hero stays `max`?** Yes. Refusal is an implementation detail of resume / `max --run-id`.
+8. **Codex-as-platform fit?** Guard block is the approval failure. Resume is not an override. No extra host exec.

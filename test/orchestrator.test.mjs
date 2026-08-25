@@ -163,6 +163,61 @@ test("failing tests reject and bound the repair loop", async () => {
   assert.ok(guards.some((event) => event.payload.action === "block" && event.payload.code === "repeat-finding"));
 });
 
+test("resume and max --run-id do not unblock a guard-blocked run", async () => {
+  const workspace = project("node -e \"process.exit(1)\"");
+  let execs = 0;
+  const countingStub = () =>
+    new StubMcode(async (req) => {
+      execs += 1;
+      return stubFromFake().exec(req);
+    });
+  const run = await runMax({
+    workspace,
+    goal: "this will fail verify twice",
+    mcode: countingStub(),
+    llmVerify: false,
+    maxRepairs: 2,
+  });
+  assert.equal(run.status, "blocked");
+  assert.equal(run.goal_state?.phase, "blocked");
+  assert.equal(run.goal_state?.blockedReason?.code, "repeat-finding");
+  const repairs = run.repair_count;
+  const execsAfterBlock = execs;
+  assert.ok(execsAfterBlock > 0);
+
+  const logs = [];
+  const resumed = await runResume({
+    workspace,
+    runId: run.run_id,
+    mcode: countingStub(),
+    llmVerify: false,
+    onLog: (line) => logs.push(line),
+  });
+  assert.equal(resumed.status, "blocked");
+  assert.equal(resumed.goal_state?.phase, "blocked");
+  assert.equal(resumed.goal_state?.blockedReason?.code, "repeat-finding");
+  assert.equal(resumed.repair_count, repairs);
+  assert.equal(execs, execsAfterBlock, "resume must not spawn another mcode exec");
+  assert.ok(
+    logs.some((line) => /blocked \(repeat-finding\)/.test(line)),
+    `expected blocked stop reason, got: ${logs.join("\n")}`,
+  );
+  const store = new RunStore(workspace);
+  assert.ok(!store.loadEvents(run.run_id).some((event) => event.type === "run_resumed"));
+
+  const maxed = await runMax({
+    workspace,
+    runId: run.run_id,
+    mcode: countingStub(),
+    llmVerify: false,
+    onLog: (line) => logs.push(line),
+  });
+  assert.equal(maxed.status, "blocked");
+  assert.equal(maxed.goal_state?.phase, "blocked");
+  assert.equal(maxed.repair_count, repairs);
+  assert.equal(execs, execsAfterBlock, "max --run-id must not spawn another mcode exec");
+});
+
 test("resume continues a PLAN_REVIEW run without starting a new goal", async () => {
   const workspace = project();
   const planned = await runPlan({
