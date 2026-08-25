@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { Findings, Phase, RunRecord, TaskContract, TaskGraph, TaskItem } from "./types.js";
 import { log, McodeMissingError, nowIso, promptYesNo } from "./util.js";
 import { RunStore } from "./store.js";
@@ -11,6 +10,8 @@ import {
   type ExecResult,
   type McodeClient,
 } from "./mcode.js";
+import { GOAL_BLOCK_CODES } from "./goal.js";
+import { decideRepair, findingFingerprint, pruneInjectedText } from "./guard.js";
 import {
   applyRequestedSession,
   emitHostSessionHints,
@@ -128,6 +129,17 @@ function rejectPlanningYield(
     exit_code: result.exitCode,
     class: isHostNativeCrash(result) || classifyHostExit(result.exitCode) === "crash" ? "host_crash" : undefined,
   });
+  if (isHostNativeCrash(result)) {
+    const current = store.load(runId);
+    if (current.goal_state) {
+      store.blockGoal(runId, current.goal_state.revision, {
+        code: GOAL_BLOCK_CODES.HOST_CRASH,
+        message: "planning yield rejected after host native crash (sqlite/assert/SIGABRT)",
+      });
+    } else {
+      store.patchRun(runId, { status: "blocked" });
+    }
+  }
   emit(
     opts,
     `${phase} ${kind}: ${worker?.summary || (kind === "blocked" ? "worker yield blocked" : "worker yield failed")} (exit ${result.exitCode})`,
@@ -213,13 +225,6 @@ function contractFor(task: TaskItem, tasks: TaskGraph): TaskContract {
   };
 }
 
-function signatureOf(findings: Findings): string {
-  const key = findings.findings
-    .map((item) => item.title)
-    .sort()
-    .join("|");
-  return createHash("sha256").update(key || findings.summary).digest("hex").slice(0, 16);
-}
 
 function isEvidenceStorePath(item: Findings["findings"][number]): boolean {
   const marked = item.evidence?.[0] || "";
@@ -359,11 +364,18 @@ export async function requireClient(opts: OrchestratorOptions, store: RunStore, 
 }
 
 function rememberOptions(store: RunStore, runId: string, opts: OrchestratorOptions): void {
+  const max_repairs = opts.maxRepairs ?? 3;
+  const current = store.load(runId);
+  const goal_state =
+    current.goal_state && current.goal_state.maxRounds !== max_repairs
+      ? { ...current.goal_state, maxRounds: max_repairs }
+      : undefined;
   store.patchRun(runId, {
-    max_repairs: opts.maxRepairs ?? 3,
+    max_repairs,
     ralph: Boolean(opts.ralph),
     team: Boolean(opts.team),
     workflow: opts.workflow || (opts.team ? "team" : "max"),
+    ...(goal_state ? { goal_state } : {}),
   });
 }
 
@@ -382,7 +394,7 @@ function announceAcceptance(store: RunStore, runId: string, opts: OrchestratorOp
 
 export async function runMax(opts: OrchestratorOptions): Promise<RunRecord> {
   const store = new RunStore(opts.workspace);
-  const run = opts.runId ? store.load(opts.runId) : store.create(opts.goal || "");
+  const run = opts.runId ? store.load(opts.runId) : store.create(opts.goal || "", { maxRepairs: opts.maxRepairs ?? 3 });
   rememberOptions(store, run.run_id, { ...opts, workflow: opts.workflow || (opts.team ? "team" : "max") });
   applyRequestedSession(store, run.run_id, opts);
   emit(opts, `run ${run.run_id} at ${store.dir(run.run_id)}`);
@@ -397,7 +409,7 @@ export async function runTeam(opts: OrchestratorOptions): Promise<RunRecord> {
 
 export async function runPlan(opts: OrchestratorOptions): Promise<RunRecord> {
   const store = new RunStore(opts.workspace);
-  const run = opts.runId ? store.load(opts.runId) : store.create(opts.goal || "");
+  const run = opts.runId ? store.load(opts.runId) : store.create(opts.goal || "", { maxRepairs: opts.maxRepairs ?? 3 });
   rememberOptions(store, run.run_id, { ...opts, workflow: opts.workflow || "plan" });
   applyRequestedSession(store, run.run_id, opts);
   emit(opts, `run ${run.run_id} at ${store.dir(run.run_id)}`);
@@ -464,7 +476,9 @@ async function executeOneBuilder(
     tasks: tasks.tasks,
   });
   store.writeArtifact(runId, "team-packet.json", `${JSON.stringify(packet, null, 2)}\n`);
-  const compactFindings = (prior?.findings || []).map((item) => `${item.severity}: ${item.title}`).join("\n");
+  const compactFindings = pruneInjectedText(
+    (prior?.findings || []).map((item) => `${item.severity}: ${item.title}`).join("\n"),
+  );
   const prompt =
     prior && prior.verdict === "rejected"
       ? repairPrompt(contractFor(task, tasks), compactFindings, packet.context)
@@ -642,20 +656,47 @@ async function drive(
 
     const findings = store.loadFindings(runId);
     if (!findings) break;
-    const sig = signatureOf(findings);
+    const fingerprint = findingFingerprint(findings);
     const current = store.load(runId);
-    const repairs = (current.repair_count || 0) + 1;
-    if (current.last_failure_signature === sig) {
-      emit(opts, "repeated failure signature; stopping repair loop");
-      store.appendEvent(runId, "repair_requested", { stop: "repeated_failure", signature: sig });
+    const repairsIncludingThis = (current.repair_count || 0) + 1;
+    const maxRounds = current.goal_state?.maxRounds ?? current.max_repairs ?? maxRepairs;
+    const decision = decideRepair({
+      fingerprint,
+      lastFingerprint: current.last_failure_signature,
+      repairsIncludingThis,
+      maxRounds,
+    });
+    if (decision.action === "block") {
+      emit(opts, decision.message);
+      if (current.goal_state) {
+        store.blockGoal(runId, current.goal_state.revision, {
+          code: decision.code,
+          message: decision.message,
+        });
+      } else {
+        store.patchRun(runId, { status: "blocked", last_failure_signature: fingerprint });
+      }
+      store.appendEvent(runId, "guard_fired", {
+        code: decision.code,
+        fingerprint,
+        action: "block",
+      });
+      store.appendEvent(runId, "repair_requested", {
+        stop: decision.code === "repeat-finding" ? "repeated_failure" : "max_repairs",
+        signature: fingerprint,
+        repairs: repairsIncludingThis,
+      });
       break;
     }
-    if (repairs > maxRepairs) {
-      emit(opts, `repair limit reached (${maxRepairs})`);
-      store.appendEvent(runId, "repair_requested", { stop: "max_repairs", repairs });
-      break;
+    store.appendEvent(runId, "guard_fired", { action: "repair", fingerprint });
+    store.patchRun(runId, {
+      repair_count: repairsIncludingThis,
+      last_failure_signature: fingerprint,
+      status: "rejected",
+    });
+    if (current.goal_state) {
+      store.startGoalRound(runId, current.goal_state.revision);
     }
-    store.patchRun(runId, { repair_count: repairs, last_failure_signature: sig, status: "rejected" });
     store.setPhase(runId, "REPAIR", "rejected");
     const currentTasks = store.loadTasks(runId);
     const nextId = `T${currentTasks.tasks.length + 1}`;
@@ -667,7 +708,7 @@ async function drive(
       depends_on: currentTasks.tasks.filter((t) => t.role === "builder").map((t) => t.id),
     });
     store.writeTasks(runId, currentTasks);
-    store.appendEvent(runId, "repair_requested", { task_id: nextId, signature: sig });
+    store.appendEvent(runId, "repair_requested", { task_id: nextId, signature: fingerprint });
   }
 
   if (store.load(runId).status === "cancelled") {

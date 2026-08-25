@@ -18,6 +18,7 @@ import {
   buildExecArgs,
   classifyHostExit,
   collectAssistantText,
+  finalizeHostExit,
   formatHostTimeout,
   isHostNativeCrash,
   isLegalHostSessionArgv,
@@ -1075,6 +1076,34 @@ test("schema reminder then crash-retry: complete tiny yield after crash-retry pa
   assert.equal(parseWorkerYield(result.crashRetryExec).ok, true);
 });
 
+test("finalizeHostExit reports timeout and signal independently of exitCode", () => {
+  const timerKill = finalizeHostExit({ code: null, signal: "SIGTERM", killedByTimer: true });
+  assert.equal(timerKill.exitCode, HOST_EXIT.timeout);
+  assert.equal(timerKill.timedOut, true);
+  assert.equal(timerKill.signal, "SIGTERM");
+  assert.equal(classifyHostExit(timerKill.exitCode), "timeout");
+  assert.equal(isHostNativeCrash({ ...timerKill, events: [], stderr: "SIGABRT in stderr" }), false);
+
+  const hostTimeout = finalizeHostExit({ code: HOST_EXIT.timeout, signal: null, killedByTimer: false });
+  assert.equal(hostTimeout.exitCode, 6);
+  assert.equal(hostTimeout.timedOut, true);
+  assert.equal(hostTimeout.signal, undefined);
+
+  const trapped = finalizeHostExit({ code: 0, signal: "SIGTERM", killedByTimer: true });
+  assert.equal(trapped.exitCode, 0);
+  assert.equal(trapped.timedOut, true);
+  assert.equal(trapped.signal, "SIGTERM");
+
+  const crash = finalizeHostExit({ code: null, signal: "SIGABRT", killedByTimer: false });
+  assert.equal(crash.exitCode, HOST_EXIT.crash);
+  assert.equal(crash.timedOut, false);
+  assert.equal(crash.signal, "SIGABRT");
+
+  const clean = finalizeHostExit({ code: 0, signal: null, killedByTimer: false });
+  assert.equal(clean.exitCode, 0);
+  assert.equal(clean.timedOut, false);
+});
+
 test("isHostNativeCrash requires exit 1 plus sqlite/assert/SIGABRT; classifyHostExit stays exit-code only", () => {
   assert.equal(classifyHostExit(1), "crash");
   assert.equal(isHostNativeCrash({ exitCode: 1, events: [], stderr: "toolUse ended the stream" }), false);
@@ -1201,7 +1230,9 @@ test("failed discover after native crash still keeps stacks out of discover.md",
     mcode: new StubMcode(async () => sqliteCrash(truncated, "mvs_discoverstack6")),
   });
   assert.equal(run.phase, "DISCOVER");
-  assert.equal(run.status, "rejected");
+  assert.equal(run.status, "blocked");
+  assert.equal(run.goal_state?.phase, "blocked");
+  assert.equal(run.goal_state?.blockedReason?.code, "host-crash");
   const store = new RunStore(workspace);
   const discover = store.loadEvidence(run.run_id).items.find((item) => item.path.includes("discover.md"));
   const body = store.readArtifact(run.run_id, discover.path);

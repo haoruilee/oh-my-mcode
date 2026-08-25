@@ -17,6 +17,8 @@ import type {
   EvidenceRecord,
   EventType,
   Findings,
+  GoalBlockReason,
+  GoalSnapshot,
   Phase,
   RunEvent,
   RunRecord,
@@ -26,6 +28,15 @@ import type {
 import { EVENT_TYPES, PHASES, STATUSES } from "./types.js";
 import { hashesMatch, sha256Bytes, sha256File, type StaleHash } from "./hash.js";
 import { seedGoalAcceptance } from "./acceptance.js";
+import {
+  blockGoal as applyBlockGoal,
+  completeGoal as applyCompleteGoal,
+  createGoalSnapshot,
+  DEFAULT_GOAL_MAX_ROUNDS,
+  goalChangedPayload,
+  startGoalRound as applyStartGoalRound,
+  type GoalOperation,
+} from "./goal.js";
 
 function nextEvidenceId(items: EvidenceRecord[]): string {
   let max = 0;
@@ -105,7 +116,7 @@ export class RunStore {
     return latest;
   }
 
-  create(goal: string): RunRecord {
+  create(goal: string, extra: { maxRepairs?: number } = {}): RunRecord {
     const trimmed = goal.trim();
     if (!trimmed) throw new CliError("create requires a goal");
     const runId = newRunId();
@@ -113,15 +124,19 @@ export class RunStore {
     if (existsSync(dir)) throw new CliError(`run already exists: ${runId}`);
     mkdirSync(path.join(dir, "evidence"), { recursive: true });
     const created = nowIso();
+    const maxRounds = extra.maxRepairs ?? DEFAULT_GOAL_MAX_ROUNDS;
+    const goal_state = createGoalSnapshot(runId, trimmed, maxRounds);
     const run: RunRecord = {
       run_id: runId,
       goal: trimmed,
+      goal_state,
       phase: "INTAKE",
       status: "active",
       created_at: created,
       updated_at: created,
       workspace: this.workspace,
       repair_count: 0,
+      ...(extra.maxRepairs != null ? { max_repairs: extra.maxRepairs } : {}),
     };
     writeJson(path.join(dir, "run.json"), run);
     writeAtomic(path.join(dir, "plan.md"), `# Plan\n\nGoal: ${run.goal}\n\n_Planner has not written this file yet._\n`);
@@ -136,6 +151,14 @@ export class RunStore {
       run_id: runId,
       phase: "INTAKE",
       payload: { goal: run.goal, acceptance: tasks.acceptance },
+    });
+    this.appendEventUnlocked(dir, {
+      id: newEventId(),
+      ts: created,
+      type: "goal_changed",
+      run_id: runId,
+      phase: "INTAKE",
+      payload: goalChangedPayload("create", goal_state),
     });
     return run;
   }
@@ -206,6 +229,53 @@ export class RunStore {
 
   patchRun(runId: string, patch: Partial<RunRecord>): RunRecord {
     return this.withLock(runId, () => this.touch(runId, patch));
+  }
+
+  private writeGoalUnlocked(
+    runId: string,
+    snapshot: GoalSnapshot,
+    operation: GoalOperation,
+    extra: Partial<RunRecord> = {},
+  ): GoalSnapshot {
+    const next = this.touch(runId, { ...extra, goal_state: snapshot });
+    this.appendEventUnlocked(this.dir(runId), {
+      id: newEventId(),
+      ts: next.updated_at,
+      type: "goal_changed",
+      run_id: runId,
+      phase: next.phase,
+      payload: goalChangedPayload(operation, snapshot),
+    });
+    return snapshot;
+  }
+
+  private requireGoal(runId: string): GoalSnapshot {
+    const current = this.load(runId).goal_state;
+    if (!current) throw new CliError(`run has no goal_state: ${runId}`);
+    return current;
+  }
+
+  completeGoal(runId: string, expectedRevision: number): GoalSnapshot {
+    return this.withLock(runId, () => this.completeGoalUnlocked(runId, expectedRevision));
+  }
+
+  blockGoal(runId: string, expectedRevision: number, reason: GoalBlockReason): GoalSnapshot {
+    return this.withLock(runId, () => {
+      const next = applyBlockGoal(this.requireGoal(runId), expectedRevision, reason);
+      return this.writeGoalUnlocked(runId, next, "block", { status: "blocked" });
+    });
+  }
+
+  startGoalRound(runId: string, expectedRevision: number): GoalSnapshot {
+    return this.withLock(runId, () => {
+      const next = applyStartGoalRound(this.requireGoal(runId), expectedRevision);
+      return this.writeGoalUnlocked(runId, next, "start_round");
+    });
+  }
+
+  private completeGoalUnlocked(runId: string, expectedRevision: number): GoalSnapshot {
+    const next = applyCompleteGoal(this.requireGoal(runId), expectedRevision);
+    return this.writeGoalUnlocked(runId, next, "complete");
   }
 
   readArtifact(runId: string, relativePath: string): string {
@@ -494,7 +564,21 @@ export class RunStore {
       const status: RunStatus = findings.verdict === "accepted" ? "accepted" : "rejected";
       const phase: Phase = findings.verdict === "accepted" ? "ACCEPT" : "REPAIR";
       const current = this.load(runId);
-      const next = this.touch(runId, { status, phase });
+      const completed =
+        findings.verdict === "accepted" && current.goal_state
+          ? applyCompleteGoal(current.goal_state, current.goal_state.revision)
+          : undefined;
+      const next = this.touch(runId, { status, phase, ...(completed ? { goal_state: completed } : {}) });
+      if (completed) {
+        this.appendEventUnlocked(this.dir(runId), {
+          id: newEventId(),
+          ts: next.updated_at,
+          type: "goal_changed",
+          run_id: runId,
+          phase,
+          payload: goalChangedPayload("complete", completed),
+        });
+      }
       const dir = this.dir(runId);
       this.appendEventUnlocked(dir, {
         id: newEventId(),
@@ -577,8 +661,12 @@ export class RunStore {
     }
     const repeated = events.find((event) => event.type === "repair_requested" && event.payload?.stop === "repeated_failure");
     const maxed = events.find((event) => event.type === "repair_requested" && event.payload?.stop === "max_repairs");
-    if (repeated || maxed || run.last_failure_signature) {
+    const goalBlocked = run.goal_state?.phase === "blocked" ? run.goal_state.blockedReason : undefined;
+    if (repeated || maxed || run.last_failure_signature || goalBlocked) {
       lines.push(``, `## Escalation`, ``);
+      if (goalBlocked) {
+        lines.push(`- Goal blocked (\`${goalBlocked.code}\`): ${goalBlocked.message}`);
+      }
       if (repeated) {
         lines.push(
           `- Repeated failure signature \`${String(repeated.payload.signature || run.last_failure_signature || "")}\`. Repair loop stopped. Human intervention required.`,

@@ -38,6 +38,8 @@ export const EVENT_TYPES = [
   "host_session_bound",
   "interview_completed",
   "subagent_spawned",
+  "goal_changed",
+  "guard_fired",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -58,9 +60,34 @@ export type FindingSeverity = "blocker" | "major" | "minor" | "note";
 export type EvidenceKind = "command" | "test" | "diff" | "log" | "other";
 export type Verdict = "accepted" | "rejected";
 
+/** Durable same-session goal. `paused` is DSH-only; we do not pause/resume/clear. */
+export type GoalPhase = "active" | "blocked" | "complete";
+
+export interface GoalBlockReason {
+  /** lower-kebab-case, policy-owned (`repeat-finding` / `repair-cap` / `host-crash`) */
+  code: string;
+  /** non-empty human+model text */
+  message: string;
+}
+
+export interface GoalSnapshot {
+  id: string;
+  /** increment on every accepted mutation */
+  revision: number;
+  objective: string;
+  phase: GoalPhase;
+  /** present iff phase === "blocked" */
+  blockedReason?: GoalBlockReason;
+  maxRounds: number;
+  roundsStarted: number;
+}
+
 export interface RunRecord {
   run_id: string;
+  /** Original user goal string. Do not rename. Durable lifecycle lives on `goal_state`. */
   goal: string;
+  /** Armed on create. Mutations are logged `goal_changed`. */
+  goal_state?: GoalSnapshot;
   phase: Phase;
   status: RunStatus;
   created_at: string;

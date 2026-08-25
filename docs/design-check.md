@@ -238,6 +238,7 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 - Did not treat a rewritten `evidence/A1-test.log` as a builder REPAIR. Index upserts by path; only leftover / workspace hashes stay blockers.
 - Did not drop the one-rerun on stale workspace source hashes.
 - Did not pretend Hashline / LSP / browser would catch Oh-My-Pi / Oh-My-OpenCode. Those are host ceilings.
+- Did not become DeepSeek Harness (Cordis, plugin-everything, goal-round-driver, model-facing Goal tools, LLM compaction, remind-and-repair extra host exec).
 
 ## 19. Root AGENTS.md (contributor operating manual)
 
@@ -293,3 +294,20 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 6. **Host honesty?** **Pass, enforced.** Never hit the npm registry in CI (installer is injected; default installer refuses `CI` / `OMM_HERMETIC`). Never run live `mcode` in GitHub Actions. We do not claim marketplace listing or a production ΔY. Finding classes are `command_failed` / `no_test` / `stale_workspace` / `host_crash` — not HTTP 413. Acceptance `npm test` drops parent `npm_*` / `INIT_CWD` / `NODE_TEST_CONTEXT` so a nested lifecycle or parent `node --test` cannot false-Accept.
 7. **Hero stays `max`?** Yes. One-command install is how the harness becomes visible. `plan` still always discovers. `--discover` forces explorer on `max`.
 8. **Codex-as-platform fit?** Acceptance list is the first reply (后填充): run id + how we will know we are done, then DISCOVER/PLAN/EXECUTE fill in. Typed yield stays strict. Eval baseline still says “Fixture harness only. Not a production ΔY statistic.”
+
+## 24. Learnable bits from DeepSeek Harness (goal snapshot / loop-hygiene guard / orthogonal host outcomes)
+
+DSH (`deepseek-ai/deepseek-harness`) is a Cordis plugin host: `ctx.goals` event-sourced GoalSnapshot, `repeat-tool-reminder`, tool-result-pruner, `ctx.compaction`, goal-round-driver idle auto-continue, model-facing Goal tools. We read that and copied **three harness facts**, not the architecture.
+
+Learned: (1) a logged goal snapshot makes “why did we stop” reconstructable — `phase` + kebab-case `blockedReason.code` + `roundsStarted`, every mutation a `goal_changed` event. (2) The inline repair-stop belongs in a guard with stable codes (`repeat-finding`, `repair-cap`), not a silent `break` that leaves `rejected`. (3) Node `close(code, signal)` after our SIGTERM is not crash exit 1; `timedOut` and `signal` are orthogonal to `exitCode`.
+
+Refused: Cordis / plugin-everything / profiles / bundles / `--dump-config`. Subagents / agent teams / a sixth worker. LSP, web UI, code mode, creator mode, self-modification. Goal-round-driver idle auto-continue, pause/resume/clear/disarm, Ralph-style independent attempts, model-facing Goal tools. LLM compaction / `ctx.compaction`. Sisyphus, fake `/max`, hooks, Hashline. Marketplace listing or a production ΔY. Live `mcode` in CI. **Advisory remind-and-repair is deferred** — DSH injects a nudge before blocking; an extra host exec here still costs 17–20k input tokens. Stop on first repeat stays one-shot. `pruneInjectedText` is a head+tail clip on the findings string already injected into the next builder prompt, not a compaction seam.
+
+1. **Verified delivery?** Yes — `goal_state` is armed before the first host exec (same moment as acceptance). VERIFY accept completes the goal. Guard block sets `status=blocked` with a machine-routable code and does **not** start another REPAIR / host exec. Accept still requires evidence files. Native-crash planning yield already rejected today; we now also `goal.block` `host-crash`.
+2. **Harness not prompt pack?** Yes — `src/goal.ts` + `src/guard.ts` + `finalizeHostExit` in TypeScript. Role files unchanged. No model-facing goal tools. No new SKILL.
+3. **One core, many surfaces?** Same `RunStore` / `submit` for CLI and MCP. TUI twin `scripts/run-store.mjs` writes the same `goal_state` shape on create and completes it on accepted findings. Not a second store.
+4. **Subagents are workers not trees?** Unchanged. Five roles. One exec each. Guard does not spawn. No grandchild API.
+5. **MiniMax-native?** Yes — we stay a thin orchestrator on `mcode`. Not a Cordis host. Hero stays `oh-my-mcode max`.
+6. **Host honesty?** **Pass, enforced.** `timedOut` is true if our timer fired **or** host exit 6, even when `exitCode===0`. SIGTERM-from-our-timer is not a native crash. `isHostNativeCrash` still needs crash exit + sqlite/assert/SIGABRT stderr. We do not invent HTTP/OMP block codes. We do not add an extra host exec on the repeat-finding path.
+7. **Hero stays `max`?** Yes. Goal/guard/timeout are implementation details of `max` / `plan` / `team`.
+8. **Codex-as-platform fit?** Goal snapshot is run-store state (thread). `goal_changed` / `guard_fired` are EQ events. Typed yield stays strict. No compaction channel. No second runtime.

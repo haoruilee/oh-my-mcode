@@ -58,6 +58,7 @@ test("max with stub mcode reaches Accepted when tests pass", async () => {
   });
   assert.equal(run.status, "accepted");
   assert.equal(run.phase, "ACCEPT");
+  assert.equal(run.goal_state?.phase, "complete");
   const store = new RunStore(workspace);
   assert.ok(store.evidenceFilesExist(run.run_id));
   const types = new Set(store.loadEvents(run.run_id).map((e) => e.type));
@@ -150,11 +151,16 @@ test("failing tests reject and bound the repair loop", async () => {
     llmVerify: false,
     maxRepairs: 2,
   });
-  assert.equal(run.status, "rejected");
+  assert.equal(run.status, "blocked");
+  assert.equal(run.goal_state?.phase, "blocked");
+  assert.equal(run.goal_state?.blockedReason?.code, "repeat-finding");
   assert.ok((run.repair_count || 0) >= 1);
   const store = new RunStore(workspace);
   assert.ok(store.loadFindings(run.run_id)?.verdict === "rejected");
   assert.ok(store.evidenceFilesExist(run.run_id));
+  const guards = store.loadEvents(run.run_id).filter((event) => event.type === "guard_fired");
+  assert.ok(guards.some((event) => event.payload.action === "repair"));
+  assert.ok(guards.some((event) => event.payload.action === "block" && event.payload.code === "repeat-finding"));
 });
 
 test("resume continues a PLAN_REVIEW run without starting a new goal", async () => {
