@@ -46,9 +46,12 @@ export function shouldAttemptHostInstall(opts: {
   skipHost?: boolean;
   hostPresent: boolean;
   stdinIsTTY?: boolean;
+  /** Injected confirm means the caller wants the prompt path (tests). */
+  hasConfirm?: boolean;
 }): boolean {
   if (opts.hostPresent || opts.skipHost) return false;
   if (opts.yes) return true;
+  if (opts.hasConfirm) return true;
   return Boolean(opts.stdinIsTTY);
 }
 
@@ -166,6 +169,7 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
     skipHost,
     hostPresent: presentBefore,
     stdinIsTTY,
+    hasConfirm: Boolean(opts.confirm),
   })) {
     log("stdin is not a TTY; skipping host install (plugin-only). Pass --yes to install the host.");
     const plugin = installPlugin({ yes: opts.yes });

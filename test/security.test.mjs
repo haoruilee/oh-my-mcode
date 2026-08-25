@@ -190,12 +190,19 @@ test("tasksFromPlanner sanitizes path-escape task.id; persistExec stays in the r
   assert.notEqual(graph.tasks[0].id, "../../etc/passwd");
   assert.match(graph.tasks[0].id, /^T\d+$/);
   store.writeTasks(run.run_id, graph);
-  await persistExec(store, run.run_id, `execute-${graph.tasks[0].id}`, yieldResult("builder ok"));
+  const spawned = {
+    ...yieldResult("builder ok"),
+    yield: { status: "ok", summary: "ok", findings: [], artifacts: [] },
+  };
+  await persistExec(store, run.run_id, `execute-${graph.tasks[0].id}`, spawned);
   const runDir = store.dir(run.run_id);
   assert.ok(!existsSync(path.resolve(runDir, "../../etc/passwd")));
   assert.ok(!existsSync(path.join(workspace, "etc", "passwd")));
   const yieldName = `yield-execute-${graph.tasks[0].id}.json`;
   assert.ok(existsSync(path.join(runDir, yieldName)));
+  await persistExec(store, run.run_id, "../../etc/passwd", spawned);
+  assert.ok(!existsSync(path.resolve(runDir, "../../etc/passwd")));
+  assert.ok(existsSync(path.join(runDir, "yield-id_sanitized.json")));
 });
 
 test("worktreePath with ../ taskId stays under .minimax/worktrees", () => {
@@ -304,23 +311,17 @@ test("install without --yes on non-TTY is plugin-only", async () => {
   process.env.OMM_PACKAGE_ROOT = fakeRoot;
   process.env.MINIMAX_HOME = home;
   let hostCalls = 0;
-  let confirmCalls = 0;
   try {
     const result = await install({
       yes: false,
       stdinIsTTY: false,
       mcodeExists: () => false,
-      confirm: async () => {
-        confirmCalls += 1;
-        return true;
-      },
       installHost: () => {
         hostCalls += 1;
         return { ok: true, command: `npm install -g ${OFFICIAL_HOST_PACKAGE}` };
       },
     });
     assert.equal(hostCalls, 0);
-    assert.equal(confirmCalls, 0);
     assert.equal(result.skip_host, true);
     assert.equal(result.host_install_attempted, false);
     assert.equal(result.plugin_installed, true);
