@@ -1,0 +1,8 @@
+{
+  "name": "omm-eval-follow-goal",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/follow.test.js"
+  }
+}

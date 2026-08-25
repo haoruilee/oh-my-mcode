@@ -80,3 +80,9 @@ mcode exec failed: --output-schema requires a JSON object.
 存在：`mcode --version`、`mcode plugin list --json`、`mcode plugin list -m local --json`。
 
 不存在公开的「Skill 是否已建索引」API。`doctor` 不会假装有。
+
+## 我们不会变成 Senpi / OMP
+
+OMP 一条安装是因为它**就是**宿主（`curl omp.sh/install`）。OMO Ultimate 仍要先装 OpenCode；Senpi 是捆绑宿主（`npm i -g omo-ai@beta`）。我们学「一条命令」的观感，不改产品形状。
+
+`npx oh-my-mcode install --yes` 在缺少 `mcode` 时可以 `npm i -g @minimax-ai/code`。那是官方 npm 包。不 curl 不明脚本。不装 MiniMax 桌面。不声称拥有 `mcode` 或已上架官方市场。`--skip-host` 只装插件。CI 仍用 `doctor --package-only`。英雄命令仍是 `oh-my-mcode max`。

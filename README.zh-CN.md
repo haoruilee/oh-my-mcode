@@ -27,13 +27,13 @@ oh-my-mcode max "fix the failing auth tests and prove they pass"
 
 ## Installation
 
-需要 Node 22+ 和 MiniMax Code CLI **`mcode` 0.1.6**（`@minimax-ai/code`）。
+需要 Node 22+。MiniMax Code CLI **`mcode`**（`@minimax-ai/code`）是宿主——另一个产品。`npx oh-my-mcode install --yes` 看起来像一条命令：如果没有 `mcode`，会先装官方 npm 包，再落本插件。我们不拥有 `mcode`。我们也不是捆绑宿主。
 
 ### TL;DR
 
 | 你想要 | 跑这个 | 落地什么 |
 | :--- | :--- | :--- |
-| **插件 + CLI** | `npx oh-my-mcode install` | 复制到 `~/.minimax/plugins/oh-my-mcode` |
+| **插件 + 缺宿主时装官方 mcode** | `npx oh-my-mcode install --yes` | PATH 上已有 `mcode` 就只落插件。没有则 `npm i -g @minimax-ai/code` 再落插件。`--skip-host` 只装插件。 |
 | **健康检查** | `npx oh-my-mcode doctor` | 包装 + 宿主检查。不联网。 |
 | **宿主冒烟** | `oh-my-mcode doctor --smoke` | 一次极小的 `mcode exec`（`pong`）+ 延迟 |
 | **宿主 TPS** | `oh-my-mcode doctor --tps` | 真的 `mcode exec` stream-json 用量（含 `input_tokens`）。缺宿主或假宿主打印 `unmeasured` 并无零退出，除非 `--allow-stub` |
@@ -61,7 +61,7 @@ oh-my-mcode doctor
 oh-my-mcode install
 ```
 
-在 0.1.6 上这样放置会自动安装并启用。用 `mcode --version` 和 `mcode plugin list -m local` 确认。
+仍然是两个产品：本 harness 和官方 `mcode`。用 `mcode --version` 和 `mcode plugin list -m local` 确认。`--skip-host` 跳过官方 npm 宿主安装。
 
 **不要**从 [MiniMax-AI/skills](https://github.com/MiniMax-AI/skills) 安装本插件。那个仓库是 Claude / Cursor / Codex 的 skill 包，不是 MiniMax Code 插件。
 
@@ -76,7 +76,7 @@ oh-my-mcode install
 | 👥 | **`team`** | TypeScript 扁平调度独立 builder。显式开启。默认仍是顺序 `max`。 |
 | 🖥️ | **HUD** | `attach` / `status` 读同一份 `.minimax/runs/<id>/`。没有假装的 App 面板。宿主 stream 有用量就显示。 |
 | 🩺 | **`doctor`** | 宿主 + 包装诚实检查。`--smoke` 是一次真的 pong exec。`--tps` 测宿主 tok/s，假宿主只打印 `unmeasured`，不编数字。 |
-| 🧪 | **Evals** | 夹具测试台（pass / fail-then-repair / plan-only）。不是生产 ΔY 统计。 |
+| 🧪 | **Evals** | 夹具测试台（pass / fail-then-repair / plan-only / follow-goal）。不是生产 ΔY 统计。 |
 
 ## Power commands
 

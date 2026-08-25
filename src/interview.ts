@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { CliError, promptLine } from "./util.js";
 import { RunStore } from "./store.js";
 import type { AcceptanceItem, RunRecord } from "./types.js";
+import { namedCheckInGoal } from "./acceptance.js";
 
 export interface InterviewQuestion {
   id: string;
@@ -56,12 +57,13 @@ export function loadAnswersFile(filePath: string): InterviewAnswers {
 export function deriveAcceptance(goal: string, answers: InterviewAnswers): AcceptanceItem[] {
   const lines = answers.acceptance && answers.acceptance.length > 0 ? answers.acceptance : [`${goal} is complete and verified`];
   return lines.map((criterion, i) => {
-    const looksLikeCommand = /\b(npm|pnpm|yarn|make|pytest|cargo|go test|mcode)\b/i.test(criterion);
+    const named = namedCheckInGoal(criterion) || namedCheckInGoal(goal);
     return {
       id: `A${i + 1}`,
       criterion,
-      kind: looksLikeCommand ? "test" : "manual",
-      command: looksLikeCommand ? criterion : undefined,
+      kind: named ? named.kind : "manual",
+      command: named?.command,
+      source: named ? "goal" : undefined,
     };
   });
 }

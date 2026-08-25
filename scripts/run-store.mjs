@@ -244,7 +244,60 @@ function resolveRunId(workspace, flags, { required = true } = {}) {
   fail(`multiple runs exist; pass --run-id or --latest (${ids.slice(0, 5).join(", ")})`);
 }
 
-function emptyTasks(runId) {
+/** Keep aligned with src/acceptance.ts + src/verify.ts detectProjectCommands. */
+function detectProjectCommands(workspace) {
+  const pkgPath = path.join(workspace, "package.json");
+  if (existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+      return {
+        test: pkg.scripts?.test ? "npm test" : undefined,
+        build: pkg.scripts?.build ? "npm run build" : undefined,
+      };
+    } catch {
+      return {};
+    }
+  }
+  if (existsSync(path.join(workspace, "go.mod"))) return { test: "go test ./..." };
+  if (existsSync(path.join(workspace, "Cargo.toml"))) return { test: "cargo test", build: "cargo build" };
+  return {};
+}
+
+function namedCheckInGoal(goal) {
+  if (/\bnpm run build\b/i.test(goal)) return { command: "npm run build", kind: "build" };
+  if (/\bnpm run test\b/i.test(goal) || /\bnpm test\b/i.test(goal)) return { command: "npm test", kind: "test" };
+  if (/\bgo test\b/i.test(goal)) return { command: "go test ./...", kind: "test" };
+  if (/\bcargo test\b/i.test(goal)) return { command: "cargo test", kind: "test" };
+  if (/\bcargo build\b/i.test(goal)) return { command: "cargo build", kind: "build" };
+  if (/\bpytest\b/i.test(goal)) return { command: "pytest", kind: "test" };
+  if (/\bmake test\b/i.test(goal)) return { command: "make test", kind: "test" };
+  if (/\bnode --test\b/i.test(goal)) return { command: "node --test", kind: "test" };
+  return undefined;
+}
+
+function seedGoalAcceptance(workspace, goal) {
+  const named = namedCheckInGoal(goal);
+  const detected = detectProjectCommands(workspace);
+  const fromGoal =
+    Boolean(named) ||
+    /\b[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\)/.test(goal) ||
+    (/\b[\w./-]+\.(?:js|cjs|mjs|ts|tsx|jsx|go|rs|py|md|json)\b/.test(goal) && /\bexport\b/i.test(goal));
+  const command = named?.command || detected.test || detected.build;
+  if (!command) {
+    return [{ id: "A1", criterion: "Need a runnable test or build command before Accept.", kind: "manual" }];
+  }
+  return [
+    {
+      id: "A1",
+      criterion: fromGoal ? String(goal).trim() : `Command succeeds: ${command}`,
+      kind: named?.kind || "test",
+      command,
+      source: fromGoal ? "goal" : "detected",
+    },
+  ];
+}
+
+function emptyTasks(runId, workspace, goal) {
   return {
     run_id: runId,
     updated_at: nowIso(),
@@ -257,13 +310,7 @@ function emptyTasks(runId) {
         depends_on: [],
       },
     ],
-    acceptance: [
-      {
-        id: "A1",
-        criterion: "Replace this placeholder with a concrete, testable criterion during PLAN.",
-        kind: "manual",
-      },
-    ],
+    acceptance: seedGoalAcceptance(workspace || "", goal || ""),
   };
 }
 
@@ -294,7 +341,8 @@ function createRun(workspace, goal) {
     path.join(dir, "plan.md"),
     `# Plan\n\nGoal: ${run.goal}\n\n_Planner has not written this file yet._\n`,
   );
-  writeJson(path.join(dir, "tasks.json"), emptyTasks(runId));
+  const tasks = emptyTasks(runId, workspace, run.goal);
+  writeJson(path.join(dir, "tasks.json"), tasks);
   writeJson(path.join(dir, "evidence/index.json"), { run_id: runId, items: [] });
   appendEventLine(dir, {
     id: newEventId(),
@@ -302,7 +350,7 @@ function createRun(workspace, goal) {
     type: "run_created",
     run_id: runId,
     phase: "INTAKE",
-    payload: { goal: run.goal },
+    payload: { goal: run.goal, acceptance: tasks.acceptance },
   });
   return run;
 }

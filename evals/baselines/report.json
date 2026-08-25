@@ -20,10 +20,15 @@
       "verified_completion": false,
       "phase": "PLAN_REVIEW",
       "resume_success": true
+    },
+    {
+      "fixture": "follow-goal",
+      "verified_completion": true,
+      "repairs": 0
     }
   ],
   "totals": {
-    "verified_completion": 2,
+    "verified_completion": 3,
     "resume_success": 1
   }
 }

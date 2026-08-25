@@ -12,7 +12,7 @@ oh-my-mcode max "<goal>" --workspace . --permission smart
 omm max "<goal>" --workspace . --permission smart
 ```
 
-That is the full loop: DISCOVER → PLAN → PLAN_REVIEW → EXECUTE → VERIFY → ACCEPT. Evidence lands in `.minimax/runs/<run_id>/`. No evidence folder → the loop did not run.
+That is the full loop: DISCOVER → PLAN → PLAN_REVIEW → EXECUTE → VERIFY → ACCEPT. Evidence lands in `.minimax/runs/<run_id>/`. No evidence folder → the loop did not run. The run persists a runnable acceptance command (from the goal or a detected test/build) before the first host exec. Concrete `max` may skip DISCOVER; `plan` always discovers. `--discover` forces the explorer exec.
 
 `oh-my-mcode plan "<goal>"` stops at PLAN_REVIEW and does not Accept.
 

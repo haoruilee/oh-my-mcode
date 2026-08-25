@@ -282,3 +282,14 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 6. **Host honesty?** Yes — 17–20k input tax and Node 24 sqlite abort are documented as `mcode` ceilings, not something we catch by becoming Oh-My-Pi / Oh-My-OpenCode. One re-run remains for stale **workspace** hashes only.
 7. **Hero stays `max`?** Yes.
 8. **Codex-as-platform fit?** Evidence records remain store artifacts. EQ (`events.jsonl`) still appends. The index upserts. Stale workspace hash is still an approval failure.
+
+## 23. Learnable bits from OMO/OMP (install / goal acceptance / follow-goal / skip-discover)
+
+1. **Verified delivery?** Yes — every `plan` / `max` run persists a runnable acceptance command when the workspace or goal has one, **before** the first host exec. Accept still requires that command to pass plus evidence files. No command → today's `no_test` blocker. follow-goal's `npm test` encodes “export `hello()`, do not add `greet`”. Concrete `max` still writes `discover.md` so resume has a snapshot.
+2. **Harness not prompt pack?** Yes — `src/install.ts` `install`, `src/acceptance.ts`, orchestrator skip-discover, `evals/runner.mjs`. Role files stayed short. We did not add Hashline / a sixth worker / a fake `/max`.
+3. **One core, many surfaces?** Install is still the only writer of `~/.minimax/plugins/oh-my-mcode`. CLI `--skip-host` / `--yes` / `--discover` call the same TypeScript. MCP did not grow a second installer. TUI `scripts/run-store.mjs` seeds the same acceptance shape on create.
+4. **Subagents are workers not trees?** Unchanged. Skipping DISCOVER removes one host exec; it does not spawn grandchildren. follow-goal is a fixture stub, not a new role.
+5. **MiniMax-native?** Yes — host install is official `@minimax-ai/code` via npm. We do not curl `omp.sh`. We do not ship `omo-ai@beta`. Hero stays `oh-my-mcode max`.
+6. **Host honesty?** **Pass, enforced.** Never hit the npm registry in CI (installer is injected; default installer refuses `CI` / `OMM_HERMETIC`). Never run live `mcode` in GitHub Actions. We do not claim marketplace listing or a production ΔY. Finding classes are `command_failed` / `no_test` / `stale_workspace` / `host_crash` — not HTTP 413.
+7. **Hero stays `max`?** Yes. One-command install is how the harness becomes visible. `plan` still always discovers. `--discover` forces explorer on `max`.
+8. **Codex-as-platform fit?** Acceptance list is the first reply (后填充): run id + how we will know we are done, then DISCOVER/PLAN/EXECUTE fill in. Typed yield stays strict. Eval baseline still says “Fixture harness only. Not a production ΔY statistic.”

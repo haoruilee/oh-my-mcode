@@ -134,6 +134,7 @@ export async function runDeterministicVerify(
       severity: "blocker",
       title: "No automated test/build command detected",
       detail: "Cannot Accept without a runnable test or build. Add package.json#scripts.test or an equivalent.",
+      class: "no_test",
     });
     store.writeTextEvidence(runId, "log", "no-test-command.txt", `detect=${detected.source}\n`, {
       notes: "no automated command",
@@ -163,12 +164,14 @@ export async function runDeterministicVerify(
       evidence: [`evidence/${rel}`],
     });
     if (!pass) {
+      const title = `Command failed: ${row.command}`;
       findings.push({
         id: `F${findings.length + 1}`,
         severity: "blocker",
-        title: `Command failed: ${row.command}`,
+        title,
         detail: result.output.slice(-4000),
         evidence: [`evidence/${rel}`],
+        class: "command_failed",
       });
     }
   }
@@ -185,12 +188,14 @@ export async function runDeterministicVerify(
   const leftoverEvidence = staleEvidence.filter((item) => !justWritten.has(item.path));
   const staleWorkspace = staleFileHashes(workspace, store.loadFileHashes(runId));
   for (const stale of [...leftoverEvidence, ...staleWorkspace]) {
+    const title = `Stale content hash: ${stale.path}`;
     findings.push({
       id: `F${findings.length + 1}`,
       severity: "blocker",
-      title: `Stale content hash: ${stale.path}`,
+      title,
       detail: `recorded ${stale.expected} live ${stale.actual || "missing"} — do not Accept; re-run tests`,
       evidence: [stale.path],
+      class: "stale_workspace",
     });
   }
 

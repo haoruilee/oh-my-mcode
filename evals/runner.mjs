@@ -102,6 +102,32 @@ async function evalFailThenRepair() {
   };
 }
 
+async function evalFollowGoal() {
+  const workspace = copyTask("follow-goal");
+  const run = await runMax({
+    workspace,
+    goal: "export hello() returning hello. Do not add greet. Prove with npm test.",
+    mcode: stub(async (req) => {
+      if (req.role === "builder") {
+        writeFileSync(path.join(req.cwd, "src/index.js"), 'export function hello() {\n  return "hello";\n}\n');
+      }
+      return undefined;
+    }),
+    llmVerify: false,
+  });
+  const store = new RunStore(workspace);
+  return {
+    fixture: "follow-goal",
+    run_id: run.run_id,
+    verified_completion: run.status === "accepted",
+    repairs: run.repair_count || 0,
+    interventions: store.loadEvents(run.run_id).filter((e) => e.payload?.stop).length,
+    resume_success: null,
+    status: run.status,
+    phase: run.phase,
+  };
+}
+
 async function evalPlanOnly() {
   const workspace = copyTask("plan-only");
   const planned = await runPlan({
@@ -130,11 +156,12 @@ function ok(row) {
   if (row.fixture === "pass") return row.verified_completion && row.repairs === 0;
   if (row.fixture === "fail-then-repair") return row.verified_completion && row.repairs >= 1;
   if (row.fixture === "plan-only") return row.phase === "PLAN_REVIEW" && row.resume_success === true;
+  if (row.fixture === "follow-goal") return row.verified_completion && row.repairs === 0;
   return false;
 }
 
 async function main() {
-  const rows = [await evalPass(), await evalFailThenRepair(), await evalPlanOnly()];
+  const rows = [await evalPass(), await evalFailThenRepair(), await evalPlanOnly(), await evalFollowGoal()];
   const report = {
     plugin: "oh-my-mcode",
     harness: "evals/runner.mjs",

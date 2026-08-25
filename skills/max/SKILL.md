@@ -28,8 +28,8 @@ Full verified-delivery loop on **one host agent**. Role files in `agents/` are c
 
 1. **INTAKE.** Restate the goal in one sentence plus out-of-scope. Create the run:
    `node <plugin-root>/scripts/run-store.mjs create --workspace <ws> --goal "<goal>"`
-   Persist `run_id`. Tell the user the path `<ws>/.minimax/runs/<run_id>/`.
-2. **DISCOVER.** `set-phase --phase DISCOVER`. Load `agents/explorer.md`. Read-only search and diagnostic commands only. Record risks and test entry points in notes, not in product files.
+   Persist `run_id` and the seeded acceptance list (goal-named command or detected test/build) **before** any host exec. Tell the user the path `<ws>/.minimax/runs/<run_id>/` and how we will know we are done.
+2. **DISCOVER.** CLI `max` may skip this host exec when the goal already names a file, function, or test command and the workspace has a detected test/build (`--discover` forces it). `plan` always discovers. When the explorer does run: `set-phase --phase DISCOVER`. Load `agents/explorer.md`. Read-only search and diagnostic commands only. Record risks and test entry points in notes, not in product files.
 3. **PLAN.** `set-phase --phase PLAN`. Load `agents/planner.md`. Write `plan.md` and `tasks.json` via `write-plan` / `write-tasks`. Every task has one role and `depends_on`. Acceptance criteria must be commands or diffs a verifier can run without trusting the builder.
 4. **PLAN_REVIEW.** `set-phase --phase PLAN_REVIEW`. Show the DAG and acceptance list. If the user asked for a plan only, **stop** and point them at the `plan` skill next time. If they asked to ship, continue unless they objected.
 5. **EXECUTE.** `set-phase --phase EXECUTE`. Load `agents/builder.md`. Do **one** ready task. No scope creep. After the task: `append-event --type task_completed --task-id T<n>` and capture command output with `add-evidence`.

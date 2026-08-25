@@ -48,7 +48,13 @@
             "items": {
               "type": "string"
             }
-          }
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["test", "build", "diff", "manual", "diagnostic"]
+          },
+          "command": { "type": "string" },
+          "source": { "type": "string", "enum": ["goal", "detected"] }
         }
       }
     },
@@ -83,6 +89,11 @@
           "sha256": {
             "type": "string",
             "description": "sha256 of linked artifact bytes (or finding text if none)"
+          },
+          "class": {
+            "type": "string",
+            "enum": ["command_failed", "no_test", "stale_workspace", "host_crash"],
+            "description": "Verifier classification. Not an HTTP / OMP transport code."
           }
         }
       }

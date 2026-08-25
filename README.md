@@ -27,13 +27,13 @@ oh-my-mcode max "fix the failing auth tests and prove they pass"
 
 ## Installation
 
-Requires Node 22+ and MiniMax Code CLI **`mcode` 0.1.6** (`@minimax-ai/code`).
+Requires Node 22+. MiniMax Code CLI **`mcode`** (`@minimax-ai/code`) is the host — a second product. `npx oh-my-mcode install --yes` looks like one command: if `mcode` is missing it installs the official npm package, then drops this plugin. We do not own `mcode`. We are not a bundled host.
 
 ### TL;DR
 
 | You want | Run | What lands |
 | :--- | :--- | :--- |
-| **Plugin + CLI** | `npx oh-my-mcode install` | Copy into `~/.minimax/plugins/oh-my-mcode` |
+| **Plugin + official host if missing** | `npx oh-my-mcode install --yes` | If `mcode` is on PATH, drop the plugin only. If missing, `npm i -g @minimax-ai/code` then drop the plugin. `--skip-host` is plugin-only. |
 | **Health check** | `npx oh-my-mcode doctor` | Package + host checks. No network. |
 | **Host smoke** | `oh-my-mcode doctor --smoke` | One tiny `mcode exec` (`pong`) + latency |
 | **Host TPS** | `oh-my-mcode doctor --tps` | Real `mcode exec` stream-json usage (`input_tokens` included). Stub, missing host, or omitted `message.usage` prints `unmeasured` and exits non-zero unless `--allow-stub` |
@@ -61,7 +61,7 @@ oh-my-mcode doctor
 oh-my-mcode install
 ```
 
-On 0.1.6 that drop-in auto-installs and enables. Confirm with `mcode --version` and `mcode plugin list -m local`.
+Still two products: this harness and official `mcode`. Confirm with `mcode --version` and `mcode plugin list -m local`. `--skip-host` skips the official npm host install.
 
 Do **not** install this from [MiniMax-AI/skills](https://github.com/MiniMax-AI/skills). That repo is a Claude / Cursor / Codex pack, not a MiniMax Code plugin.
 
@@ -76,7 +76,7 @@ Do **not** install this from [MiniMax-AI/skills](https://github.com/MiniMax-AI/s
 | 👥 | **`team`** | Flat TypeScript scheduling of independent builders. Explicit. Sequential `max` stays the default. |
 | 🖥️ | **HUD** | `attach` / `status` read the same `.minimax/runs/<id>/` folder. No fake App panels. Tokens/cost when the host stream has them. |
 | 🩺 | **`doctor`** | Host + package honesty. `--smoke` is a real pong exec. `--tps` measures host tok/s or prints `unmeasured` — it will not invent numbers on fake-mcode. |
-| 🧪 | **Evals** | Fixture harness (pass / fail-then-repair / plan-only). Not a production ΔY claim. |
+| 🧪 | **Evals** | Fixture harness (pass / fail-then-repair / plan-only / follow-goal). Not a production ΔY claim. |
 
 ## Power commands
 

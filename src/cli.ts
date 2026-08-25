@@ -3,7 +3,7 @@ import { CliError, McodeMissingError, log } from "./util.js";
 import { RunStore } from "./store.js";
 import { runDoctor, formatDoctor } from "./doctor.js";
 import { formatTps, runDoctorTps } from "./tps.js";
-import { installPlugin } from "./install.js";
+import { install } from "./install.js";
 import { runMax, runPlan, runResume, runTeam } from "./orchestrator.js";
 import { PERMISSIONS, type Permission } from "./types.js";
 import { applyFlagOverrides, loadConfig } from "./config.js";
@@ -38,7 +38,7 @@ Commands:
   team <task>        Flat team mode (explicit; sequential max is default)
   interview <goal>   Capture goal/constraints/acceptance; stop at PLAN_REVIEW
   doctor             Host + package health
-  install            Copy plugin into ~/.minimax/plugins/oh-my-mcode
+  install            Plugin drop-in; official @minimax-ai/code if mcode is missing
 
 max is the only command you must remember. The others are power tools.
 
@@ -62,6 +62,8 @@ Options:
   --tps                  doctor: real host tok/s (unmeasured if stub or usage omitted)
   --allow-stub           doctor --tps: allow fake-mcode (still unmeasured)
   --yes                  install: non-interactive
+  --skip-host            install: plugin only (do not fetch @minimax-ai/code)
+  --discover             max: force the explorer host exec even when the goal is concrete
   --answers FILE         interview: skip prompts, load JSON
   --constraint TEXT      interview: repeatable; non-TTY without --answers
   --interview            max: interview first, then the full loop
@@ -92,6 +94,7 @@ Examples:
   npx oh-my-mcode install --yes
 `;
 
+
 interface Flags {
   _: string[];
   workspace?: string;
@@ -113,6 +116,8 @@ interface Flags {
   tps?: boolean;
   "allow-stub"?: boolean;
   yes?: boolean;
+  "skip-host"?: boolean;
+  discover?: boolean;
   answers?: string;
   constraint?: string[];
   interview?: boolean;
@@ -141,6 +146,8 @@ const BOOL_FLAGS = new Set([
   "tps",
   "allow-stub",
   "yes",
+  "skip-host",
+  "discover",
   "interview",
 ]);
 
@@ -274,7 +281,7 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
   }
 
   if (command === "install") {
-    const result = installPlugin({ yes: Boolean(flags.yes) });
+    const result = await install({ yes: Boolean(flags.yes), skipHost: Boolean(flags["skip-host"]) });
     print(result, Boolean(flags.json));
     return 0;
   }
@@ -308,7 +315,14 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
         });
         runId = interviewed.run?.run_id;
       }
-      const run = await runMax({ ...common, goal: rest, runId, resumeFrom: flags.interview ? "PLAN_REVIEW" : undefined, interview: Boolean(flags.interview) });
+      const run = await runMax({
+        ...common,
+        goal: rest,
+        runId,
+        resumeFrom: flags.interview ? "PLAN_REVIEW" : undefined,
+        interview: Boolean(flags.interview),
+        discover: Boolean(flags.discover),
+      });
       print(run, true);
       printSessionHints(run);
       return run.status === "accepted" ? 0 : 2;
