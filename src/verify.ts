@@ -61,6 +61,20 @@ export function detectProjectCommands(workspace: string): DetectedCommands {
   return { source: "none" };
 }
 
+/**
+ * Drop parent npm lifecycle and `NODE_TEST_CONTEXT` so an acceptance
+ * `npm test` / `node --test` runs the workspace suite.
+ * Failure modes: nested npm hits the harness package; parent `node --test`
+ * makes the fixture's `node --test` skip files and exit 0 (false Accept).
+ */
+export function cleanSpawnEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env = { ...base };
+  for (const key of Object.keys(env)) {
+    if (key === "INIT_CWD" || key.startsWith("npm_") || key.startsWith("NODE_TEST")) delete env[key];
+  }
+  return env;
+}
+
 export async function runCaptured(
   command: string,
   cwd: string,
@@ -69,7 +83,7 @@ export async function runCaptured(
   return new Promise((resolve, reject) => {
     const child = spawn(command, {
       cwd,
-      env: process.env,
+      env: cleanSpawnEnv(),
       shell: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -134,6 +148,7 @@ export async function runDeterministicVerify(
       severity: "blocker",
       title: "No automated test/build command detected",
       detail: "Cannot Accept without a runnable test or build. Add package.json#scripts.test or an equivalent.",
+      class: "no_test",
     });
     store.writeTextEvidence(runId, "log", "no-test-command.txt", `detect=${detected.source}\n`, {
       notes: "no automated command",
@@ -163,12 +178,14 @@ export async function runDeterministicVerify(
       evidence: [`evidence/${rel}`],
     });
     if (!pass) {
+      const title = `Command failed: ${row.command}`;
       findings.push({
         id: `F${findings.length + 1}`,
         severity: "blocker",
-        title: `Command failed: ${row.command}`,
+        title,
         detail: result.output.slice(-4000),
         evidence: [`evidence/${rel}`],
+        class: "command_failed",
       });
     }
   }
@@ -185,12 +202,14 @@ export async function runDeterministicVerify(
   const leftoverEvidence = staleEvidence.filter((item) => !justWritten.has(item.path));
   const staleWorkspace = staleFileHashes(workspace, store.loadFileHashes(runId));
   for (const stale of [...leftoverEvidence, ...staleWorkspace]) {
+    const title = `Stale content hash: ${stale.path}`;
     findings.push({
       id: `F${findings.length + 1}`,
       severity: "blocker",
-      title: `Stale content hash: ${stale.path}`,
+      title,
       detail: `recorded ${stale.expected} live ${stale.actual || "missing"} — do not Accept; re-run tests`,
       evidence: [stale.path],
+      class: "stale_workspace",
     });
   }
 

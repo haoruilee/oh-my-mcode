@@ -28,13 +28,13 @@ Official submit checklists sometimes reject install scripts, secrets, and symlin
 
 ## Local install (what works today)
 
-Official listing is separate. Local install stays:
+Official listing is separate. Local install stays one command, two products (`mcode` is still the host):
 
 ```bash
 npx oh-my-mcode install --yes
 ```
 
-Confirm with `mcode plugin list -m local`. Interim while unpublished on npm: `npx github:haoruilee/oh-my-mcode install --yes`.
+If `mcode` is missing, that installs official `@minimax-ai/code` then the plugin. `--skip-host` is plugin-only. Confirm with `mcode plugin list -m local`. Interim while unpublished on npm: `npx github:haoruilee/oh-my-mcode install --yes`.
 
 ## Community registry (optional, separate)
 

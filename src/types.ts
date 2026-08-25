@@ -51,6 +51,9 @@ export type Permission = (typeof PERMISSIONS)[number];
 export type TaskStatus = "pending" | "in_progress" | "done" | "blocked" | "cancelled";
 export type AcceptanceKind = "test" | "build" | "diff" | "manual" | "diagnostic";
 export type AcceptanceResult = "pass" | "fail" | "untested";
+export type AcceptanceSource = "goal" | "detected";
+export const FINDING_CLASSES = ["command_failed", "no_test", "stale_workspace", "host_crash"] as const;
+export type FindingClass = (typeof FINDING_CLASSES)[number];
 export type FindingSeverity = "blocker" | "major" | "minor" | "note";
 export type EvidenceKind = "command" | "test" | "diff" | "log" | "other";
 export type Verdict = "accepted" | "rejected";
@@ -123,6 +126,8 @@ export interface AcceptanceItem {
   command?: string;
   result?: AcceptanceResult;
   evidence?: string[];
+  /** Where the runnable command / criterion was sourced. */
+  source?: AcceptanceSource;
 }
 
 export interface TaskGraph {
@@ -139,6 +144,8 @@ export interface FindingItem {
   detail: string;
   evidence?: string[];
   sha256?: string;
+  /** command_failed | no_test | stale_workspace | host_crash — not HTTP / OMP transport codes. */
+  class?: FindingClass;
 }
 
 export interface Findings {

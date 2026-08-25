@@ -97,6 +97,14 @@ Later the same day (2026-08-21), a live Mac run against 0.2.1 showed more host f
 
 Host ceilings (not a product). A ~20-word `mcode exec` still pays **17–20k input tokens** — almost all of that is host system/tools (`message.usage` fixture: 16816 input / 261 output). Node 24 + better-sqlite3 can GC-abort (`Statement::~Statement`). Those are `mcode` limits. We shrink prompts and lock the argv/stream/yield contract. Hashline, LSP, or a browser tool would be changing the host, not catching Oh-My-Pi / Oh-My-OpenCode. This package stays the verified-delivery layer. Hero stays `oh-my-mcode max`.
 
+## We do not become Senpi / OMP
+
+OMP is one install because it **is** the host (`curl omp.sh/install`). OMO Ultimate still needs OpenCode first; Senpi is a bundled host (`npm i -g omo-ai@beta`). We learn the one-command *look*, not the product shape.
+
+`npx oh-my-mcode install --yes` may `npm i -g @minimax-ai/code` if `mcode` is missing. That is the official npm package. We do not curl unknown scripts. We do not install MiniMax desktop. We do not claim we own `mcode` or that we are marketplace-listed. `--skip-host` is plugin-only. `doctor --package-only` stays valid for CI.
+
+Concrete `max` may skip the explorer `mcode exec` when the goal already names a file, function, or test command and the workspace has a detected test/build. That is a token-tax cut, not a fused host. `plan` still discovers. Finding classes are `command_failed` / `no_test` / `stale_workspace` / `host_crash`. We do not invent HTTP 413; `mcode` is not OMP's transport.
+
 Max mode can be driven headless later by `mcode exec` plus a prompt that loads the `max` skill. That is not a second product CLI.
 
 ```bash

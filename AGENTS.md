@@ -10,6 +10,7 @@
 | hermetic eval | `npm run eval` (fixture harness; not live `mcode`) |
 | CI | `.github/workflows/hermetic.yml` runs the two hermetic gates on push/PR to `main`. No live `mcode`, no MiniMax secrets. |
 | live rematch | `oh-my-mcode plan` or `oh-my-mcode max` on a **copy** of `test/fixtures/hello-pkg` |
+| follow-goal eval | `evals/tasks/follow-goal` + `npm run eval` (instruction-follow fixture; not a production ΔY) |
 
 This repo uses **npm**. Do **not** use bun or pnpm — those rewrite the lockfile. Do not run a production publish or `npm publish` in an agent session.
 
@@ -39,7 +40,9 @@ Host already has explore / plan / team. Role files do **not** register new host 
 
 | Path | What it is |
 | --- | --- |
-| `src/orchestrator.ts` | Phase machine. `plan` stops at PLAN_REVIEW. `max` continues to ACCEPT. |
+| `src/orchestrator.ts` | Phase machine. `plan` stops at PLAN_REVIEW. `max` continues to ACCEPT. Concrete `max` may skip DISCOVER. |
+| `src/acceptance.ts` | Goal/detected acceptance seed. Concrete-goal skip-discover. Finding class (`command_failed` / `no_test` / `stale_workspace` / `host_crash`). |
+| `src/install.ts` | Plugin drop-in. If `mcode` is missing, optional official `npm i -g @minimax-ai/code`. Still two products. |
 | `dist/` | Generated `tsc` output. Edit `src/`, then `npm test`. Do not hand-edit compiled JS. |
 | `src/harness.ts` | One core: `submit` / subscribe / bind. CLI and MCP call this. |
 | `src/subagent.ts` | One role worker per `mcode exec`. Depth ≥ 1 throws. |
@@ -53,6 +56,7 @@ Host already has explore / plan / team. Role files do **not** register new host 
 | `docs/harness.md` | Codex-as-platform map. |
 | `test/host-contract.test.mjs` | Locked host argv / stream / yield contract. |
 | `test/fixtures/hello-pkg` | Live rematch / plan-max fixture (`hello()` imported, `placeholder()` exported). Keep plan/max tests pointed here. |
+| `evals/tasks/follow-goal` | Instruction-follow fixture: export `hello()`, do **not** add `greet`. Acceptance is real `npm test`. |
 | `test/fixtures/hello-repair` | Two-export fixture (`hello()` + `greet()` imported, only `placeholder()` exported). Hermetic `npm test` in the fixture must fail. |
 | `test/fixtures/fake-mcode.mjs` | Hermetic stub. **Not** live QA. |
 | `examples/AGENTS.max-mode.md` | Opt-in template for a **user** product repo. |
@@ -74,7 +78,11 @@ omm max "<goal>" --workspace <project> --permission smart
 | TUI phrasing `max mode: …` | same as `max` | same | same |
 | TUI phrasing `make a verified plan` | PLAN_REVIEW | No | No |
 
-`--workspace` is the project being changed (default: cwd). `--permission smart` is the usual builder mode (`ask|smart|full|off`). `--no-llm-verify` skips the optional read-only LLM judge; deterministic verify still runs.
+`--workspace` is the project being changed (default: cwd). `--permission smart` is the usual builder mode (`ask|smart|full|off`). `--no-llm-verify` skips the optional read-only LLM judge; deterministic verify still runs. `--discover` forces the explorer host exec on `max`.
+
+**Goal acceptance.** Every `plan` / `max` run persists at least one acceptance item with a **runnable command** when the workspace has one (`package.json` `scripts.test` / `scripts.build`, or a command named in the goal). Source is `goal` when the goal names a check (`npm test`, `go test`, a file+export); otherwise `detected`. The run id + acceptance list is emitted **before** the first host exec. No command at all → today's blocker: cannot Accept without a runnable test/build. Do not invent a WorkerYield. Do not Accept on vibes.
+
+**Skip DISCOVER on concrete `max`.** When the goal already names a file, function, or test command **and** the workspace has a detected test/build command, `max` skips the explorer host exec (each `mcode exec` still costs ~17–20k host input). It still writes a short `discover.md` / snapshot (`skipped: goal already concrete` + the acceptance list) so resume works. It does not invent repo facts. `plan` always discovers. `--discover` forces the explorer exec.
 
 Run store: `<workspace>/.minimax/runs/<run_id>/`. If there is no folder, the loop did not run.
 
@@ -138,7 +146,7 @@ Test the contract the system exposes — not the easiest internal detail to asse
 - **Name the failure mode** or do not add the test. What does a consumer observe if this regresses?
 - **No source-grep tests.** Do not read `src/*.ts` and `expect(src).toContain(...)`.
 - **No invented yield in tests.** Use `test/helpers/yield.mjs`. Do not synthesize a WorkerYield from prose.
-- Good: argv / exit / stream / yield transform, phase stop (`plan` ≠ PLAN_REVIEW on failed yield), Accept refused without evidence, install does not write a project `AGENTS.md`.
+- Good: argv / exit / stream / yield transform, phase stop (`plan` ≠ PLAN_REVIEW on failed yield), Accept refused without evidence, install does not write a project `AGENTS.md`, host-present install does not invoke the host installer, concrete `max` does not spawn explorer. Acceptance `npm test` must not inherit parent `NODE_TEST_CONTEXT` (false Accept).
 - Bad: “file contains this string”, success passthrough, prompt-boilerplate asserts.
 
 ## DESIGN CHECK

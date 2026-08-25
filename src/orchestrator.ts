@@ -36,6 +36,14 @@ import { builderPrompt, explorerPrompt, plannerPrompt, plannerTeamPrompt, repair
 import { buildTeamPacket, drainBuilderWaves } from "./team.js";
 import { cleanupRunWorktrees, createWorktree, mergeWorktree } from "./worktree.js";
 import { loadWorkflow } from "./workflows.js";
+import {
+  formatAcceptanceAnnouncement,
+  hasRunnableAcceptance,
+  mergeAcceptance,
+  seedGoalAcceptance,
+  shouldSkipDiscover,
+  skippedDiscoverText,
+} from "./acceptance.js";
 
 export interface OrchestratorOptions {
   workspace: string;
@@ -58,6 +66,8 @@ export interface OrchestratorOptions {
   continue?: boolean;
   resumeFrom?: Phase;
   interview?: boolean;
+  /** Force the explorer host exec on `max` even when the goal is already concrete. */
+  discover?: boolean;
 }
 
 function emit(opts: OrchestratorOptions, line: string): void {
@@ -116,6 +126,7 @@ function rejectPlanningYield(
     status: worker?.status,
     summary: worker?.summary,
     exit_code: result.exitCode,
+    class: isHostNativeCrash(result) || classifyHostExit(result.exitCode) === "crash" ? "host_crash" : undefined,
   });
   emit(
     opts,
@@ -127,10 +138,11 @@ function rejectPlanningYield(
   return finished;
 }
 
-function tasksFromPlanner(runId: string, goal: string, result: ExecResult): TaskGraph {
+function tasksFromPlanner(runId: string, goal: string, result: ExecResult, existing?: TaskGraph): TaskGraph {
   const parsed = plannerGraphFromResult(result) as
     | { tasks?: TaskItem[]; acceptance?: TaskGraph["acceptance"] }
     | undefined;
+  const seeded = existing?.acceptance || [];
   if (parsed?.tasks?.length && parsed.acceptance?.length) {
     return {
       run_id: runId,
@@ -144,7 +156,7 @@ function tasksFromPlanner(runId: string, goal: string, result: ExecResult): Task
         notes: task.notes,
         allowed_files: task.allowed_files,
       })),
-      acceptance: parsed.acceptance,
+      acceptance: mergeAcceptance(seeded, parsed.acceptance),
     };
   }
   return {
@@ -159,13 +171,13 @@ function tasksFromPlanner(runId: string, goal: string, result: ExecResult): Task
         depends_on: [],
       },
     ],
-    acceptance: [
+    acceptance: mergeAcceptance(seeded, [
       {
         id: "A1",
         criterion: "Project test or build command exits 0",
         kind: "test",
       },
-    ],
+    ]),
   };
 }
 
@@ -355,12 +367,26 @@ function rememberOptions(store: RunStore, runId: string, opts: OrchestratorOptio
   });
 }
 
+function announceAcceptance(store: RunStore, runId: string, opts: OrchestratorOptions): void {
+  const run = store.load(runId);
+  const tasks = store.loadTasks(runId);
+  if (!hasRunnableAcceptance(tasks.acceptance)) {
+    const seeded = seedGoalAcceptance(opts.workspace, run.goal);
+    if (seeded.length) {
+      store.writeTasks(runId, { ...tasks, acceptance: seeded, updated_at: nowIso() });
+    }
+  }
+  const acceptance = store.loadTasks(runId).acceptance;
+  for (const line of formatAcceptanceAnnouncement(runId, acceptance)) emit(opts, line);
+}
+
 export async function runMax(opts: OrchestratorOptions): Promise<RunRecord> {
   const store = new RunStore(opts.workspace);
   const run = opts.runId ? store.load(opts.runId) : store.create(opts.goal || "");
   rememberOptions(store, run.run_id, { ...opts, workflow: opts.workflow || (opts.team ? "team" : "max") });
   applyRequestedSession(store, run.run_id, opts);
   emit(opts, `run ${run.run_id} at ${store.dir(run.run_id)}`);
+  announceAcceptance(store, run.run_id, opts);
   const client = await requireClient(opts, store, run.run_id);
   return drive(store, client, run.run_id, opts, { stopAfter: "ACCEPT", resumeFrom: opts.resumeFrom });
 }
@@ -375,6 +401,7 @@ export async function runPlan(opts: OrchestratorOptions): Promise<RunRecord> {
   rememberOptions(store, run.run_id, { ...opts, workflow: opts.workflow || "plan" });
   applyRequestedSession(store, run.run_id, opts);
   emit(opts, `run ${run.run_id} at ${store.dir(run.run_id)}`);
+  announceAcceptance(store, run.run_id, opts);
   const client = await requireClient(opts, store, run.run_id);
   return drive(store, client, run.run_id, { ...opts, workflow: opts.workflow || "plan" }, { stopAfter: "PLAN_REVIEW" });
 }
@@ -487,26 +514,57 @@ async function drive(
 
   if (shouldRun(run.phase, "DISCOVER", ctrl.resumeFrom) && workflow.phases.includes("DISCOVER")) {
     store.setPhase(runId, "DISCOVER");
-    emit(opts, "phase DISCOVER");
-    const result = await execRole(
-      client,
-      store,
-      runId,
-      {
-        cwd: opts.workspace,
-        prompt: explorerPrompt(run.goal, interviewContext(store, runId)),
-        role: "explorer",
-        permission: permission === "full" ? "ask" : permission,
-      },
-      opts,
-    );
-    await persistExec(store, runId, "discover", result);
-    store.writeTextEvidence(runId, "log", "discover.md", discoverEvidenceText(result), {
-      notes: "explorer yield.summary / assistant JSON / short crash note; not native stacks",
+    const skipDiscover = shouldSkipDiscover({
+      workflow: opts.workflow || workflow.id,
+      forceDiscover: Boolean(opts.discover),
+      goal: run.goal,
+      workspace: opts.workspace,
     });
-    const discoverKind = planningYieldKind(result);
-    if (discoverKind !== "ok") {
-      return rejectPlanningYield(store, runId, "DISCOVER", result, opts, discoverKind);
+    if (skipDiscover) {
+      emit(opts, "phase DISCOVER (skipped: goal already concrete)");
+      const acceptance = store.loadTasks(runId).acceptance;
+      const body = skippedDiscoverText(run.goal, acceptance);
+      store.writeArtifact(runId, "discover.md", body);
+      store.writeTextEvidence(runId, "log", "discover.md", body, {
+        notes: "skipped discover; goal already concrete + detected test/build; not a repo map",
+      });
+      store.writeArtifact(
+        runId,
+        "exec-snapshot-discover.json",
+        `${JSON.stringify(
+          {
+            skipped: true,
+            reason: "goal already concrete",
+            assistant_text: "",
+            yield_status: null,
+            acceptance,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    } else {
+      emit(opts, "phase DISCOVER");
+      const result = await execRole(
+        client,
+        store,
+        runId,
+        {
+          cwd: opts.workspace,
+          prompt: explorerPrompt(run.goal, interviewContext(store, runId)),
+          role: "explorer",
+          permission: permission === "full" ? "ask" : permission,
+        },
+        opts,
+      );
+      await persistExec(store, runId, "discover", result);
+      store.writeTextEvidence(runId, "log", "discover.md", discoverEvidenceText(result), {
+        notes: "explorer yield.summary / assistant JSON / short crash note; not native stacks",
+      });
+      const discoverKind = planningYieldKind(result);
+      if (discoverKind !== "ok") {
+        return rejectPlanningYield(store, runId, "DISCOVER", result, opts, discoverKind);
+      }
     }
     run = store.load(runId);
   }
@@ -535,7 +593,7 @@ async function drive(
       return rejectPlanningYield(store, runId, "PLAN", result, opts, planKind);
     }
     store.writePlan(runId, planMarkdown(run.goal, discoverBody, yieldSummary(result, "planner yield")));
-    store.writeTasks(runId, tasksFromPlanner(runId, run.goal, result));
+    store.writeTasks(runId, tasksFromPlanner(runId, run.goal, result, store.loadTasks(runId)));
   }
 
   if (ctrl.stopAfter === "PLAN_REVIEW" || shouldRun(store.load(runId).phase, "PLAN_REVIEW", ctrl.resumeFrom)) {

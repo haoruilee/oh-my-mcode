@@ -25,6 +25,7 @@ import type {
 } from "./types.js";
 import { EVENT_TYPES, PHASES, STATUSES } from "./types.js";
 import { hashesMatch, sha256Bytes, sha256File, type StaleHash } from "./hash.js";
+import { seedGoalAcceptance } from "./acceptance.js";
 
 function nextEvidenceId(items: EvidenceRecord[]): string {
   let max = 0;
@@ -124,7 +125,9 @@ export class RunStore {
     };
     writeJson(path.join(dir, "run.json"), run);
     writeAtomic(path.join(dir, "plan.md"), `# Plan\n\nGoal: ${run.goal}\n\n_Planner has not written this file yet._\n`);
-    writeJson(path.join(dir, "tasks.json"), emptyTasks(runId));
+    const tasks = emptyTasks(runId);
+    tasks.acceptance = seedGoalAcceptance(this.workspace, trimmed);
+    writeJson(path.join(dir, "tasks.json"), tasks);
     writeJson(path.join(dir, "evidence/index.json"), { run_id: runId, items: [] } satisfies EvidenceIndex);
     this.appendEventUnlocked(dir, {
       id: newEventId(),
@@ -132,7 +135,7 @@ export class RunStore {
       type: "run_created",
       run_id: runId,
       phase: "INTAKE",
-      payload: { goal: run.goal },
+      payload: { goal: run.goal, acceptance: tasks.acceptance },
     });
     return run;
   }

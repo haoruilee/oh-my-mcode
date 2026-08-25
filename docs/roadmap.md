@@ -17,7 +17,7 @@ This maps the original product plan to what this repo ships. Host-honesty: publi
 | §8.6 Tool repair | `src/tool-repair.ts`: classify spawn/parse; at most one retry; then block + `repair_requested` |
 | Config | `<workspace>/.minimax/oh-my-mcode.json` and `~/.minimax/oh-my-mcode.json`; flags override |
 | §9 Doctor + inspect | Packaged skills present + frontmatter; bins resolve; store writable; mcode version; plugin drop-in; `doctor --smoke` pong exec; silent skill drop is an error |
-| §13 Evals | `evals/` harness + 3 fixtures + checked-in baseline + `npm run eval`. **No production ΔY claim** |
+| §13 Evals | `evals/` harness + 4 fixtures (pass / fail-then-repair / plan-only / follow-goal) + checked-in baseline + `npm run eval`. **No production ΔY claim** |
 | Workflows | `workflows/*.yaml` parsed by `src/workflows.ts` (max/plan/verify/review/ship/research/team/interview) |
 | Harness / subagent | `src/harness.ts` + `src/subagent.ts`: thread=run, EQ=`events.jsonl`, no grandchild spawn. See `docs/harness.md` |
 | Host coexistence | We do not claim `/plan` `/goal` `/resume` `/team`. Natural-language Skills only |
