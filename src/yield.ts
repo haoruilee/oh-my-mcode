@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { packageRoot, parseJsonObject } from "./util.js";
+import { assertSafeDestName, isSafeId, safeId } from "./safe-path.js";
 import type { FindingSeverity, UsageTotals } from "./types.js";
 import { classifyHostExit, hostStderrText, type ExecResult, type HostExitKind } from "./mcode.js";
 import type { RunStore } from "./store.js";
@@ -352,8 +353,9 @@ function writeOneSnapshot(
   notes: string,
 ): void {
   const snap = buildExecSnapshot(result, extra);
-  store.writeArtifact(runId, name, `${JSON.stringify(snap, null, 2)}\n`);
-  store.writeTextEvidence(runId, "log", name, JSON.stringify(snap), {
+  const destName = assertSafeDestName(name);
+  store.writeArtifact(runId, destName, `${JSON.stringify(snap, null, 2)}\n`);
+  store.writeTextEvidence(runId, "log", destName, JSON.stringify(snap), {
     command: `mcode exec (${name.replace(/^exec-snapshot-|\.json$/g, "")})`,
     notes,
     exit_code: result.exitCode,
@@ -371,10 +373,11 @@ export function writeExecPhaseSnapshots(
   const reminder = result.reminderExec;
   const crashRetry = result.crashRetryExec;
   const hasFollowUp = Boolean(reminder || crashRetry);
+  const phaseName = isSafeId(phase) ? phase : safeId(phase.replace(/[^A-Za-z0-9_-]+/g, "_"), "id_sanitized");
   writeOneSnapshot(
     store,
     runId,
-    `exec-snapshot-${phase}.json`,
+    `exec-snapshot-${phaseName}.json`,
     first,
     { hashes: extra.hashes, yieldStatus: hasFollowUp ? null : extra.yieldStatus },
     "typed exec snapshot (assistant text / exec.result.answer / stderr excerpt); not raw JSONL",
@@ -383,7 +386,7 @@ export function writeExecPhaseSnapshots(
     writeOneSnapshot(
       store,
       runId,
-      `exec-snapshot-${phase}-reminder.json`,
+      `exec-snapshot-${phaseName}-reminder.json`,
       reminder,
       { hashes: extra.hashes, yieldStatus: crashRetry ? null : extra.yieldStatus },
       reminderHasAssistantText(reminder)
@@ -395,7 +398,7 @@ export function writeExecPhaseSnapshots(
     writeOneSnapshot(
       store,
       runId,
-      `exec-snapshot-${phase}-crash-retry.json`,
+      `exec-snapshot-${phaseName}-crash-retry.json`,
       crashRetry,
       { hashes: extra.hashes, yieldStatus: extra.yieldStatus },
       reminderHasAssistantText(crashRetry)

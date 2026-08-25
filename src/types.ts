@@ -54,7 +54,7 @@ export type TaskStatus = "pending" | "in_progress" | "done" | "blocked" | "cance
 export type AcceptanceKind = "test" | "build" | "diff" | "manual" | "diagnostic";
 export type AcceptanceResult = "pass" | "fail" | "untested";
 export type AcceptanceSource = "goal" | "detected";
-export const FINDING_CLASSES = ["command_failed", "no_test", "stale_workspace", "host_crash"] as const;
+export const FINDING_CLASSES = ["command_failed", "command_refused", "no_test", "stale_workspace", "host_crash"] as const;
 export type FindingClass = (typeof FINDING_CLASSES)[number];
 export type FindingSeverity = "blocker" | "major" | "minor" | "note";
 export type EvidenceKind = "command" | "test" | "diff" | "log" | "other";
@@ -171,7 +171,7 @@ export interface FindingItem {
   detail: string;
   evidence?: string[];
   sha256?: string;
-  /** command_failed | no_test | stale_workspace | host_crash — not HTTP / OMP transport codes. */
+  /** command_failed | command_refused | no_test | stale_workspace | host_crash — not HTTP / OMP transport codes. */
   class?: FindingClass;
 }
 

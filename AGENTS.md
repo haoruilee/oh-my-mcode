@@ -43,7 +43,7 @@ Host already has explore / plan / team. Role files do **not** register new host 
 | `src/orchestrator.ts` | Phase machine. `plan` stops at PLAN_REVIEW. `max` continues to ACCEPT. Concrete `max` may skip DISCOVER. |
 | `src/goal.ts` | Durable same-session `RunRecord.goal_state` (active/blocked/complete). Logged `goal_changed`. Not model-facing tools. |
 | `src/guard.ts` | Loop hygiene: first fail → repair; same fingerprint → `repeat-finding`; over cap → `repair-cap`. `pruneInjectedText` only. |
-| `src/acceptance.ts` | Goal/detected acceptance seed. Concrete-goal skip-discover. Finding class (`command_failed` / `no_test` / `stale_workspace` / `host_crash`). |
+| `src/acceptance.ts` | Goal/detected acceptance seed. Concrete-goal skip-discover. Finding class (`command_failed` / `command_refused` / `no_test` / `stale_workspace` / `host_crash`). Verify commands are allowlisted (named check ∪ `detectProjectCommands`). |
 | `src/install.ts` | Plugin drop-in. If `mcode` is missing, optional official `npm i -g @minimax-ai/code`. Still two products. |
 | `dist/` | Generated `tsc` output. Edit `src/`, then `npm test`. Do not hand-edit compiled JS. |
 | `src/harness.ts` | One core: `submit` / subscribe / bind. CLI and MCP call this. |
@@ -83,6 +83,8 @@ omm max "<goal>" --workspace <project> --permission smart
 `--workspace` is the project being changed (default: cwd). `--permission smart` is the usual builder mode (`ask|smart|full|off`). `--no-llm-verify` skips the optional read-only LLM judge; deterministic verify still runs. `--discover` forces the explorer host exec on `max`.
 
 **Goal acceptance.** Every `plan` / `max` run persists at least one acceptance item with a **runnable command** when the workspace has one (`package.json` `scripts.test` / `scripts.build`, or a command named in the goal). Source is `goal` when the goal names a check (`npm test`, `go test`, a file+export); otherwise `detected`. The run id + acceptance list is emitted **before** the first host exec. No command at all → today's blocker: cannot Accept without a runnable test/build. Do not invent a WorkerYield. Do not Accept on vibes.
+
+**Verify / store hygiene.** Deterministic verify only runs the closed allowlist (`npm test`, `npm run build`, `go test ./...`, `cargo test`, `cargo build`, `pytest`, `make test`, `node --test`) as argv (`shell: false`). Planner `acceptance.command` is kept only if it is in `allowedVerifyCommands(workspace, goal)` (named check ∪ detected) or equals the seed. `runId` must match `^run_[A-Za-z0-9]+$` before `dir` / `resolveId` / load (`--run-id`, `OMM_RUN_ID`, MCP). Artifact / evidence / worktree paths stay under the run dir or `.minimax/worktrees` after resolve. Evidence dest that is a symlink is unlinked (never written through). A workspace `.minimax/oh-my-mcode.json` cannot set `permission: "full"` (home file and `--permission full` still can). A guard-blocked run (`status=blocked` / `goal_state.phase=blocked`) stays blocked: `resume` and `max --run-id` do not EXECUTE.
 
 **Skip DISCOVER on concrete `max`.** When the goal already names a file, function, or test command **and** the workspace has a detected test/build command, `max` skips the explorer host exec (each `mcode exec` still costs ~17–20k host input). It still writes a short `discover.md` / snapshot (`skipped: goal already concrete` + the acceptance list) so resume works. It does not invent repo facts. `plan` always discovers. `--discover` forces the explorer exec.
 

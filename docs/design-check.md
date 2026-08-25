@@ -239,6 +239,12 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 - Did not drop the one-rerun on stale workspace source hashes.
 - Did not pretend Hashline / LSP / browser would catch Oh-My-Pi / Oh-My-OpenCode. Those are host ceilings.
 - Did not become DeepSeek Harness (Cordis, plugin-everything, goal-round-driver, model-facing Goal tools, LLM compaction, remind-and-repair extra host exec).
+- Did not spawn planner `acceptance.command` as `shell: true`.
+- Did not let `task.id` / evidence `name` / `..` write outside the run dir.
+- Did not let a workspace config file set `permission: full`.
+- Did not rewrite ProcessMcode / host env (mcode needs credentials).
+- Did not add Cordis, hooks, a sixth worker, or live `mcode` in CI.
+- Did not let `omm resume` / `max --run-id` unblock a guard-blocked run or start another host exec.
 
 ## 19. Root AGENTS.md (contributor operating manual)
 
@@ -311,3 +317,29 @@ Refused: Cordis / plugin-everything / profiles / bundles / `--dump-config`. Suba
 6. **Host honesty?** **Pass, enforced.** `timedOut` is true if our timer fired **or** host exit 6, even when `exitCode===0`. SIGTERM-from-our-timer is not a native crash. `isHostNativeCrash` still needs crash exit + sqlite/assert/SIGABRT stderr. We do not invent HTTP/OMP block codes. We do not add an extra host exec on the repeat-finding path.
 7. **Hero stays `max`?** Yes. Goal/guard/timeout are implementation details of `max` / `plan` / `team`.
 8. **Codex-as-platform fit?** Goal snapshot is run-store state (thread). `goal_changed` / `guard_fired` are EQ events. Typed yield stays strict. No compaction channel. No second runtime.
+
+## 25. Untrusted planner yield + untrusted workspace config (verify allowlist / path confine)
+
+Threat model: planner `WorkerYield` / task graph is untrusted (shell strings, `../` ids). Workspace `.minimax/oh-my-mcode.json` is untrusted. MCP `omm_verify` / CLI `--run-id` / `OMM_RUN_ID` are untrusted strings. A builder can plant `evidence/*` as a symlink. We still run the workspace's own allowlisted `npm test` (that is intended). Host `ProcessMcode` env is not scrubbed (mcode needs credentials). Acceptance spawn env is.
+
+1. **Verified delivery?** Yes — VERIFY still requires a runnable allowlisted command plus evidence files. A planner `curl|sh` cannot become Accept. Path escape cannot plant evidence outside the run dir. A traversal `runId` cannot `mkdir` a `.lock` outside `.minimax/runs`. A dest symlink cannot redirect evidence writes. Workspace `permission: full` cannot silently widen builder host permission.
+2. **Harness not prompt pack?** Yes — allowlist, argv spawn, `assertRunId` / `prepareWriteDest` / `safeId` / `assertUnder` are TypeScript. Role files unchanged. No sixth worker. No Cordis / hooks.
+3. **One core, many surfaces?** `runDeterministicVerify` / `runCaptured` / `mergeAcceptance` are the only verify spawn path. MCP `omm_verify` still `Harness.submit({ op: "verify" })`. Store writes go through `assertRunId` + `prepareWriteDest`. TUI `scripts/run-store.mjs` rejects the same run-id charset and dest symlinks.
+4. **Subagents are workers not trees?** Unchanged. Five roles. One exec each. No grandchild API. Planner cannot add a shell; it cannot add a worker either.
+5. **MiniMax-native?** Yes — we stay the verified-delivery layer on `mcode`. Hero stays `oh-my-mcode max`. We did not add a host tool or registered agent.
+6. **Host honesty?** **Pass, enforced.** We do not spawn non-allowlisted strings (`shell: false` on the closed argv map only). We do not join `../../../../tmp/pwn` as a run id. We do not write through an evidence dest symlink (`lstat` + `unlink` the link only). We do not let a workspace file raise permission to `full`. We still run the project's own `npm test` when that is the named/detected command. Tests are exploit-shaped: `touch PWNED && npm test` must not create `PWNED`; `dir("../../../../tmp/pwn")` must throw with no mkdir outside `runsRoot`; `writeTextEvidence` must not change a file outside the run dir pointed at by `evidence/A1-test.log`.
+7. **Hero stays `max`?** Yes. Allowlist / confine are implementation details of VERIFY and the run store.
+8. **Codex-as-platform fit?** Approvals stay `--permission` / verifier-only Accepted. Workspace config cannot mint `full`. Typed yield stays strict. No live `mcode` in CI.
+
+## 26. Guard-blocked runs stay blocked (`resume` / `max --run-id`)
+
+Threat model: after `repeat-finding` / `repair-cap` / `host-crash`, a human (or TUI) can type `omm resume` or `omm max --run-id`. That must not undo the guard. We do not invent DSH pause/resume/clear. A new attempt is a new run.
+
+1. **Verified delivery?** Yes — the guard stop is durable. Resume cannot burn another host exec or flip `status` back to `active` so Accept could happen without a new verified loop.
+2. **Harness not prompt pack?** Yes — `refuseIfBlocked` is TypeScript in `runResume` / `runMax` / `drive`. Role files unchanged.
+3. **One core, many surfaces?** CLI `resume` and `max --run-id` share `runResume` / `runMax`. `drive` refuses again so no second path.
+4. **Subagents are workers not trees?** Unchanged. Refusal means zero extra `mcode exec`, not a grandchild.
+5. **MiniMax-native?** Yes — we stay the harness. Hero stays `max`. No DSH Goal tools.
+6. **Host honesty?** **Pass, enforced.** Blocked run + `runResume` keeps `status=blocked`, `repair_count` unchanged, exec count unchanged. Emit the original `blockedReason.code` / message. We do not start a goal round on a blocked snapshot.
+7. **Hero stays `max`?** Yes. Refusal is an implementation detail of resume / `max --run-id`.
+8. **Codex-as-platform fit?** Guard block is the approval failure. Resume is not an override. No extra host exec.

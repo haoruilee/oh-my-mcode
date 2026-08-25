@@ -1,5 +1,8 @@
 import type { AcceptanceItem, AcceptanceKind, AcceptanceSource, FindingClass } from "./types.js";
-import { detectProjectCommands } from "./verify.js";
+import { allowedVerifyCommands, detectProjectCommands } from "./verify.js";
+import { safeId } from "./safe-path.js";
+
+export { allowedVerifyCommands, isAllowedVerifyCommand } from "./verify.js";
 
 /** Goal text that names a runnable check. Do not invent a command. */
 const NAMED_CHECKS: Array<{ re: RegExp; command: string; kind: AcceptanceKind }> = [
@@ -71,23 +74,58 @@ function summarizeGoalCriterion(goal: string, command: string): string {
   return `${trimmed.slice(0, 180)}… (${command})`;
 }
 
+function dropCommand(item: AcceptanceItem): AcceptanceItem {
+  const next = { ...item };
+  delete next.command;
+  return next;
+}
+
+function sanitizeAcceptanceItem(item: AcceptanceItem, index: number): AcceptanceItem {
+  return { ...item, id: safeId(item.id, `A${index + 1}`) };
+}
+
 /**
  * Planner may add tasks; it must not drop a seeded runnable command,
- * and must not invent a command when goal+workspace have none.
+ * must not invent a command when goal+workspace have none,
+ * and must not introduce a shell string outside the allowlist.
  */
-export function mergeAcceptance(seeded: AcceptanceItem[], planned: AcceptanceItem[]): AcceptanceItem[] {
-  if (!hasRunnableAcceptance(seeded)) {
-    return seeded.length > 0 ? seeded : planned;
+export function mergeAcceptance(
+  seeded: AcceptanceItem[],
+  planned: AcceptanceItem[],
+  workspace: string,
+  goal: string,
+): AcceptanceItem[] {
+  const allowed = new Set(allowedVerifyCommands(workspace, goal));
+  for (const seed of seeded) {
+    if (seed.command?.trim()) allowed.add(seed.command.trim());
   }
-  const plannedRunnable = planned.filter((item) => item.command?.trim());
-  if (plannedRunnable.length > 0) {
-    return planned.map((item) => {
-      if (!item.command?.trim()) return item;
-      const match = seeded.find((seed) => seed.command === item.command);
-      return { ...item, source: item.source || match?.source };
+
+  if (!hasRunnableAcceptance(seeded)) {
+    const base = seeded.length > 0 ? seeded : planned;
+    return base.map((item, i) => {
+      const cmd = item.command?.trim();
+      if (cmd && allowed.has(cmd)) return sanitizeAcceptanceItem({ ...item, command: cmd }, i);
+      return sanitizeAcceptanceItem(cmd ? dropCommand(item) : item, i);
     });
   }
-  return seeded;
+
+  const plannedRunnable = planned.filter((item) => item.command?.trim());
+  if (plannedRunnable.length === 0) return seeded.map((item, i) => sanitizeAcceptanceItem(item, i));
+
+  const seedCmd = seeded.find((seed) => seed.command?.trim())?.command?.trim();
+  return planned.map((item, i) => {
+    const cmd = item.command?.trim();
+    if (!cmd) return sanitizeAcceptanceItem(item, i);
+    if (allowed.has(cmd)) {
+      const match = seeded.find((seed) => seed.command === cmd);
+      return sanitizeAcceptanceItem({ ...item, command: cmd, source: item.source || match?.source }, i);
+    }
+    if (seedCmd) {
+      const match = seeded.find((seed) => seed.command === seedCmd);
+      return sanitizeAcceptanceItem({ ...item, command: seedCmd, source: match?.source }, i);
+    }
+    return sanitizeAcceptanceItem(dropCommand(item), i);
+  });
 }
 
 export function formatAcceptanceAnnouncement(runId: string, items: AcceptanceItem[]): string[] {
@@ -139,6 +177,7 @@ export function skippedDiscoverText(goal: string, items: AcceptanceItem[]): stri
 export function classifyFinding(input: { title: string; hostCrash?: boolean }): FindingClass | undefined {
   if (input.hostCrash) return "host_crash";
   if (/^No automated test\/build command detected/i.test(input.title)) return "no_test";
+  if (/^Command refused:/i.test(input.title)) return "command_refused";
   if (/^Command failed:/i.test(input.title)) return "command_failed";
   if (/^Stale content hash:/i.test(input.title)) return "stale_workspace";
   return undefined;

@@ -21,12 +21,15 @@ import { createHash, randomBytes } from "node:crypto";
 import {
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -183,8 +186,25 @@ function runsRoot(workspace) {
   return path.join(workspace, ".minimax", "runs");
 }
 
+const RUN_ID_RE = /^run_[A-Za-z0-9]+$/;
+
+function assertRunId(id) {
+  const trimmed = String(id ?? "").trim();
+  if (!RUN_ID_RE.test(trimmed)) fail(`invalid run id: ${id}`, 2);
+  return trimmed;
+}
+
+function unlinkIfSymlink(abs) {
+  try {
+    if (lstatSync(abs).isSymbolicLink()) unlinkSync(abs);
+  } catch (error) {
+    if (error && error.code === "ENOENT") return;
+    throw error;
+  }
+}
+
 function runDir(workspace, runId) {
-  return path.join(runsRoot(workspace), runId);
+  return path.join(runsRoot(workspace), assertRunId(runId));
 }
 
 function writeAtomic(filePath, contents) {
@@ -205,6 +225,7 @@ function writeJson(filePath, value) {
 function withLock(dir, fn) {
   mkdirSync(dir, { recursive: true });
   const lockPath = path.join(dir, ".lock");
+  unlinkIfSymlink(lockPath);
   if (existsSync(lockPath)) {
     const ageMs = Date.now() - statSync(lockPath).mtimeMs;
     if (ageMs < 30_000) {
@@ -228,7 +249,7 @@ function listRunIds(workspace) {
   const root = runsRoot(workspace);
   if (!existsSync(root)) return [];
   return readdirSync(root)
-    .filter((name) => name.startsWith("run_") && existsSync(path.join(root, name, "run.json")))
+    .filter((name) => RUN_ID_RE.test(name) && existsSync(path.join(root, name, "run.json")))
     .sort((a, b) => {
       const aTime = statSync(path.join(root, a, "run.json")).mtimeMs;
       const bTime = statSync(path.join(root, b, "run.json")).mtimeMs;
@@ -237,8 +258,8 @@ function listRunIds(workspace) {
 }
 
 function resolveRunId(workspace, flags, { required = true } = {}) {
-  if (flags["run-id"]) return flags["run-id"];
-  if (process.env.OMM_RUN_ID) return process.env.OMM_RUN_ID;
+  if (flags["run-id"]) return assertRunId(flags["run-id"]);
+  if (process.env.OMM_RUN_ID) return assertRunId(process.env.OMM_RUN_ID);
   const ids = listRunIds(workspace);
   if (flags.latest || ids.length === 1) return ids[0];
   if (!required) return undefined;
@@ -589,8 +610,23 @@ function addEvidence(workspace, runId, flags) {
     const indexPath = path.join(dir, "evidence/index.json");
     const index = existsSync(indexPath) ? readJson(indexPath) : { run_id: runId, items: [] };
     const destName = flags.name || `${nextEvidenceId(index.items)}-${path.basename(src)}`;
+    if (!destName || destName !== path.basename(destName) || destName.includes("..")) {
+      fail(`unsafe evidence name: ${destName}`);
+    }
     const destRel = path.posix.join("evidence", destName);
-    const destAbs = path.join(dir, "evidence", destName);
+    const evidenceRoot = path.join(dir, "evidence");
+    mkdirSync(evidenceRoot, { recursive: true });
+    const destAbs = path.resolve(evidenceRoot, destName);
+    const runRoot = path.resolve(dir);
+    const prefix = runRoot.endsWith(path.sep) ? runRoot : `${runRoot}${path.sep}`;
+    if (destAbs !== runRoot && !destAbs.startsWith(prefix)) fail(`path escapes evidence dir: ${destName}`);
+    unlinkIfSymlink(destAbs);
+    const parent = path.dirname(destAbs);
+    if (!existsSync(parent)) fail(`cannot write: parent missing: ${destAbs}`);
+    const parentReal = realpathSync(parent);
+    const rootReal = existsSync(runRoot) ? realpathSync(runRoot) : runRoot;
+    const rel = path.relative(rootReal, parentReal);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) fail(`path escapes run directory: ${destAbs}`);
     const existingIdx = index.items.findIndex((item) => item.path === destRel);
     const id = existingIdx >= 0 ? index.items[existingIdx].id : nextEvidenceId(index.items);
     copyFileSync(src, destAbs);
