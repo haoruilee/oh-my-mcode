@@ -32,6 +32,14 @@ export interface ExecResult {
   text: string;
   events: StreamEvent[];
   exitCode: number;
+  /**
+   * Our timer fired and/or `classifyHostExit(exitCode)==="timeout"`.
+   * Independent of exitCode — a child can theoretically exit 0 after trapping
+   * SIGTERM. Callers that need a clean finish check `exitCode===0 && !timedOut`.
+   */
+  timedOut?: boolean;
+  /** Node `close` signal, e.g. SIGTERM / SIGABRT. */
+  signal?: string;
   rawLines: string[];
   usage?: UsageTotals;
   structuredOutput?: { data?: unknown };
@@ -152,6 +160,23 @@ export function classifyHostExit(code: number): HostExitKind | "unknown" {
 }
 
 /**
+ * Node `close` is `(code, signal)`. After our SIGTERM, `code` is often `null`
+ * and `signal` is `SIGTERM` — that is a timeout, not crash exit 1.
+ * Host-side timeout is still exit 6 even when our timer never fired.
+ */
+export function finalizeHostExit(input: {
+  code: number | null;
+  signal?: NodeJS.Signals | string | null;
+  killedByTimer: boolean;
+}): Pick<ExecResult, "exitCode" | "timedOut" | "signal"> {
+  const exitCode =
+    typeof input.code === "number" ? input.code : input.killedByTimer ? HOST_EXIT.timeout : HOST_EXIT.crash;
+  const timedOut = input.killedByTimer || classifyHostExit(exitCode) === "timeout";
+  const signal = input.signal ? String(input.signal) : undefined;
+  return { exitCode, timedOut, ...(signal ? { signal } : {}) };
+}
+
+/**
  * Live mcode 0.2.1 / Node 24.19.0: better-sqlite3 GC abort (`Statement::~Statement`,
  * `RemoveEnvironmentCleanupHook` assert `(env) != nullptr`, SIGABRT).
  * Exit 1 alone is crash / incomplete. Native-crash retry requires these signatures.
@@ -168,7 +193,10 @@ export function hostStderrText(result: Pick<ExecResult, "stderr" | "events">): s
     .join("\n");
 }
 
-export function isHostNativeCrash(result: Pick<ExecResult, "exitCode" | "stderr" | "events">): boolean {
+export function isHostNativeCrash(
+  result: Pick<ExecResult, "exitCode" | "stderr" | "events" | "timedOut" | "signal">,
+): boolean {
+  if (result.timedOut && result.signal === "SIGTERM") return false;
   return classifyHostExit(result.exitCode) === "crash" && HOST_NATIVE_CRASH_RE.test(hostStderrText(result));
 }
 
@@ -342,13 +370,14 @@ export class ProcessMcode implements McodeClient {
     let first_token_ms: number | undefined;
     let stderr = "";
 
-    const exitCode = await new Promise<number>((resolve, reject) => {
+    const closed = await new Promise<Pick<ExecResult, "exitCode" | "timedOut" | "signal">>((resolve, reject) => {
       const child = spawn(command, args, {
         cwd: req.cwd,
         env: process.env,
         stdio: ["ignore", "pipe", "pipe"],
       });
       let buffer = "";
+      let killedByTimer = false;
       const onChunk = (chunk: Buffer) => {
         buffer += chunk.toString("utf8");
         const parts = buffer.split("\n");
@@ -371,6 +400,7 @@ export class ProcessMcode implements McodeClient {
       const timer =
         prepared.timeoutMs && prepared.timeoutMs > 0
           ? setTimeout(() => {
+              killedByTimer = true;
               child.kill("SIGTERM");
             }, prepared.timeoutMs)
           : undefined;
@@ -381,7 +411,7 @@ export class ProcessMcode implements McodeClient {
         }
         reject(error);
       });
-      child.on("close", (code) => {
+      child.on("close", (code, signal) => {
         if (timer) clearTimeout(timer);
         if (buffer.trim()) {
           rawLines.push(buffer);
@@ -394,7 +424,7 @@ export class ProcessMcode implements McodeClient {
           events.push(event);
           req.onEvent?.(event);
         }
-        resolve(code ?? 1);
+        resolve(finalizeHostExit({ code, signal, killedByTimer }));
       });
     });
 
@@ -405,7 +435,9 @@ export class ProcessMcode implements McodeClient {
     return {
       text: collectAssistantText(events),
       events,
-      exitCode,
+      exitCode: closed.exitCode,
+      timedOut: closed.timedOut,
+      ...(closed.signal ? { signal: closed.signal } : {}),
       rawLines,
       usage,
       structuredOutput: extractStructuredOutput(events),

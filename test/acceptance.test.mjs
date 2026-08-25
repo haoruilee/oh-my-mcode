@@ -153,7 +153,9 @@ test("follow-goal violate: exporting greet is rejected by npm test", async () =>
     llmVerify: false,
     maxRepairs: 0,
   });
-  assert.equal(run.status, "rejected");
+  assert.equal(run.status, "blocked");
+  assert.equal(run.goal_state?.phase, "blocked");
+  assert.equal(run.goal_state?.blockedReason?.code, "repair-cap");
   const store = new RunStore(workspace);
   const findings = store.loadFindings(run.run_id);
   assert.ok(findings?.findings.some((item) => item.class === "command_failed"));

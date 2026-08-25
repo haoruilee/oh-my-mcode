@@ -16,7 +16,7 @@ This repo uses **npm**. Do **not** use bun or pnpm — those rewrite the lockfil
 
 Contributor operating manual for **oh-my-mcode**. Not a skill-pack blurb. This file does not become the orchestrator.
 
-North star: **Not more agents. Ship with evidence. The TypeScript harness owns the loop. `mcode` is the host.**
+North star: **Not more agents. Ship with evidence. The TypeScript harness owns the loop. `mcode` is the host.** Durable `goal_state` on the run store and `src/guard.ts` loop hygiene reconstruct why we stopped (`repeat-finding` / `repair-cap` / `host-crash`). Host `timedOut` / `signal` are orthogonal to `exitCode`. We are not DeepSeek Harness.
 
 ## Default context
 
@@ -41,13 +41,15 @@ Host already has explore / plan / team. Role files do **not** register new host 
 | Path | What it is |
 | --- | --- |
 | `src/orchestrator.ts` | Phase machine. `plan` stops at PLAN_REVIEW. `max` continues to ACCEPT. Concrete `max` may skip DISCOVER. |
+| `src/goal.ts` | Durable same-session `RunRecord.goal_state` (active/blocked/complete). Logged `goal_changed`. Not model-facing tools. |
+| `src/guard.ts` | Loop hygiene: first fail → repair; same fingerprint → `repeat-finding`; over cap → `repair-cap`. `pruneInjectedText` only. |
 | `src/acceptance.ts` | Goal/detected acceptance seed. Concrete-goal skip-discover. Finding class (`command_failed` / `no_test` / `stale_workspace` / `host_crash`). |
 | `src/install.ts` | Plugin drop-in. If `mcode` is missing, optional official `npm i -g @minimax-ai/code`. Still two products. |
 | `dist/` | Generated `tsc` output. Edit `src/`, then `npm test`. Do not hand-edit compiled JS. |
 | `src/harness.ts` | One core: `submit` / subscribe / bind. CLI and MCP call this. |
 | `src/subagent.ts` | One role worker per `mcode exec`. Depth ≥ 1 throws. |
 | `src/yield.ts` | `schemaMode=strict`. Parent parses `exec.result.answer` / assistant JSON / `structuredOutput.data`. |
-| `src/mcode.ts` | Host argv + exit map. Default omits `--output-schema`. |
+| `src/mcode.ts` | Host argv + exit map. `finalizeHostExit` reports `timedOut` / `signal` independently of `exitCode`. Default omits `--output-schema`. |
 | `agents/*.md` | Five role contracts for the same host process. |
 | `skills/*/SKILL.md` | TUI phrasing (`max` / `plan` / `verify` / …). Not a second loop. |
 | `schemas/*.schema.json` | On-disk schemas. TypeScript validates. |

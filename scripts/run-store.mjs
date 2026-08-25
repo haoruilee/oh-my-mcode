@@ -67,6 +67,8 @@ const EVENT_TYPES = [
   "hud_attached",
   "run_cancelled",
   "host_session_bound",
+  "goal_changed",
+  "guard_fired",
 ];
 
 const EVIDENCE_KINDS = ["command", "test", "diff", "log", "other"];
@@ -330,6 +332,14 @@ function createRun(workspace, goal) {
   const run = {
     run_id: runId,
     goal: String(goal).trim(),
+    goal_state: {
+      id: `goal_${runId}`,
+      revision: 1,
+      objective: String(goal).trim(),
+      phase: "active",
+      maxRounds: 3,
+      roundsStarted: 0,
+    },
     phase: "INTAKE",
     status: "active",
     created_at: created,
@@ -351,6 +361,14 @@ function createRun(workspace, goal) {
     run_id: runId,
     phase: "INTAKE",
     payload: { goal: run.goal, acceptance: tasks.acceptance },
+  });
+  appendEventLine(dir, {
+    id: newEventId(),
+    ts: created,
+    type: "goal_changed",
+    run_id: runId,
+    phase: "INTAKE",
+    payload: { operation: "create", revision: 1, phase: "active" },
   });
   return run;
 }
@@ -488,7 +506,26 @@ function writeFindings(workspace, runId, filePath) {
     const status = findings.verdict === "accepted" ? "accepted" : "rejected";
     const phase = findings.verdict === "accepted" ? "ACCEPT" : "REPAIR";
     const current = loadRun(workspace, runId);
-    const next = touchRun(workspace, runId, { status, phase });
+    let goal_state = current.goal_state;
+    if (findings.verdict === "accepted" && goal_state) {
+      goal_state = { ...goal_state, revision: (goal_state.revision || 1) + 1, phase: "complete" };
+      delete goal_state.blockedReason;
+    }
+    const next = touchRun(workspace, runId, {
+      status,
+      phase,
+      ...(goal_state ? { goal_state } : {}),
+    });
+    if (findings.verdict === "accepted" && goal_state) {
+      appendEventLine(dir, {
+        id: newEventId(),
+        ts: next.updated_at,
+        type: "goal_changed",
+        run_id: runId,
+        phase,
+        payload: { operation: "complete", revision: goal_state.revision, phase: "complete" },
+      });
+    }
     appendEventLine(dir, {
       id: newEventId(),
       ts: next.updated_at,
