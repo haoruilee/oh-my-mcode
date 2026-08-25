@@ -28,6 +28,7 @@ import type {
 import { EVENT_TYPES, PHASES, STATUSES } from "./types.js";
 import { hashesMatch, sha256Bytes, sha256File, type StaleHash } from "./hash.js";
 import { seedGoalAcceptance } from "./acceptance.js";
+import { assertSafeDestName, assertUnder, isSafeId, safeId } from "./safe-path.js";
 import {
   blockGoal as applyBlockGoal,
   completeGoal as applyCompleteGoal,
@@ -89,7 +90,9 @@ export class RunStore {
   }
 
   dir(runId: string): string {
-    return path.join(this.runsRoot(), runId);
+    const id = isSafeId(runId) ? runId : safeId(runId, "id_sanitized");
+    const dest = path.resolve(this.runsRoot(), id);
+    return assertUnder(this.runsRoot(), dest);
   }
 
   listIds(): string[] {
@@ -279,7 +282,8 @@ export class RunStore {
   }
 
   readArtifact(runId: string, relativePath: string): string {
-    const full = path.join(this.dir(runId), relativePath);
+    const root = this.dir(runId);
+    const full = assertUnder(root, path.resolve(root, relativePath));
     if (!existsSync(full)) return "";
     return readFileSync(full, "utf8");
   }
@@ -345,7 +349,8 @@ export class RunStore {
 
   writeArtifact(runId: string, relativePath: string, contents: string): string {
     return this.withLock(runId, () => {
-      const dest = path.join(this.dir(runId), relativePath);
+      const root = this.dir(runId);
+      const dest = assertUnder(root, path.resolve(root, relativePath));
       writeAtomic(dest, contents.endsWith("\n") ? contents : `${contents}\n`);
       this.touch(runId, {});
       return dest;
@@ -412,11 +417,13 @@ export class RunStore {
     if (!existsSync(src)) throw new CliError(`evidence source not found: ${src}`);
     return this.withLock(runId, () => {
       const index = this.loadEvidence(runId);
-      const destName = extra.name || `${nextEvidenceId(index.items)}-${path.basename(src)}`;
+      const destName = assertSafeDestName(extra.name || `${nextEvidenceId(index.items)}-${path.basename(src)}`);
       const destRel = path.posix.join("evidence", destName);
       const existing = index.items.find((item) => item.path === destRel);
       const id = existing?.id ?? nextEvidenceId(index.items);
-      copyFileSync(src, path.join(this.dir(runId), "evidence", destName));
+      const evidenceRoot = path.join(this.dir(runId), "evidence");
+      const destAbs = assertUnder(evidenceRoot, path.resolve(evidenceRoot, destName));
+      copyFileSync(src, destAbs);
       const record: EvidenceRecord = {
         id,
         kind,
@@ -426,7 +433,7 @@ export class RunStore {
       if (extra.command) record.command = extra.command;
       if (extra.exit_code !== undefined) record.exit_code = extra.exit_code;
       if (extra.notes) record.notes = extra.notes;
-      const digest = sha256File(path.join(this.dir(runId), destRel));
+      const digest = sha256File(assertUnder(this.dir(runId), path.resolve(this.dir(runId), destRel)));
       if (digest) record.sha256 = digest;
       if (existing) {
         index.items = index.items.map((item) => (item.path === destRel ? record : item));
@@ -455,6 +462,7 @@ export class RunStore {
     contents: string,
     extra: { command?: string; exit_code?: number; notes?: string } = {},
   ): EvidenceRecord {
+    assertSafeDestName(name);
     const tmp = path.join(this.dir(runId), "evidence", `.incoming-${process.pid}`);
     mkdirSync(path.dirname(tmp), { recursive: true });
     writeFileSync(tmp, contents.endsWith("\n") ? contents : `${contents}\n`);
@@ -468,14 +476,25 @@ export class RunStore {
   evidenceFilesExist(runId: string): boolean {
     const index = this.loadEvidence(runId);
     if (index.items.length === 0) return false;
-    return index.items.every((item) => existsSync(path.join(this.dir(runId), item.path)));
+    return index.items.every((item) => {
+      try {
+        return existsSync(assertUnder(this.dir(runId), path.resolve(this.dir(runId), item.path)));
+      } catch {
+        return false;
+      }
+    });
   }
 
   staleEvidence(runId: string): StaleHash[] {
     const stale: StaleHash[] = [];
     for (const item of latestEvidenceByPath(this.loadEvidence(runId).items)) {
       if (!item.sha256) continue;
-      const actual = sha256File(path.join(this.dir(runId), item.path));
+      let actual: string | undefined;
+      try {
+        actual = sha256File(assertUnder(this.dir(runId), path.resolve(this.dir(runId), item.path)));
+      } catch {
+        actual = undefined;
+      }
       if (!hashesMatch(item.sha256, actual)) {
         stale.push({ path: item.path, expected: item.sha256, actual });
       }
@@ -491,7 +510,12 @@ export class RunStore {
       const refreshed: EvidenceRecord[] = [];
       for (const item of latestEvidenceByPath(index.items)) {
         if (!want.has(item.path)) continue;
-        const digest = sha256File(path.join(this.dir(runId), item.path));
+        let digest: string | undefined;
+        try {
+          digest = sha256File(assertUnder(this.dir(runId), path.resolve(this.dir(runId), item.path)));
+        } catch {
+          digest = undefined;
+        }
         if (!digest) continue;
         item.sha256 = digest;
         item.recorded_at = nowIso();

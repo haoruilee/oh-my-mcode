@@ -45,6 +45,7 @@ import {
   shouldSkipDiscover,
   skippedDiscoverText,
 } from "./acceptance.js";
+import { isSafeId, safeId } from "./safe-path.js";
 
 export interface OrchestratorOptions {
   workspace: string;
@@ -150,25 +151,43 @@ function rejectPlanningYield(
   return finished;
 }
 
-function tasksFromPlanner(runId: string, goal: string, result: ExecResult, existing?: TaskGraph): TaskGraph {
+function remapDepends(raw: string[] | undefined, idMap: Map<string, string>): string[] {
+  return (raw || []).map((dep) => idMap.get(dep) || safeId(dep, "T1")).filter((id, i, all) => all.indexOf(id) === i);
+}
+
+export function tasksFromPlanner(
+  runId: string,
+  goal: string,
+  result: ExecResult,
+  existing: TaskGraph | undefined,
+  workspace: string,
+): TaskGraph {
   const parsed = plannerGraphFromResult(result) as
     | { tasks?: TaskItem[]; acceptance?: TaskGraph["acceptance"] }
     | undefined;
   const seeded = existing?.acceptance || [];
   if (parsed?.tasks?.length && parsed.acceptance?.length) {
-    return {
-      run_id: runId,
-      updated_at: nowIso(),
-      tasks: parsed.tasks.map((task, i) => ({
-        id: task.id || `T${i + 1}`,
+    const idMap = new Map<string, string>();
+    const tasks = parsed.tasks.map((task, i) => {
+      const id = safeId(task.id, `T${i + 1}`);
+      if (task.id) idMap.set(task.id, id);
+      idMap.set(id, id);
+      return {
+        id,
         title: task.title,
         role: task.role || "builder",
         status: task.status || "pending",
         depends_on: task.depends_on || [],
         notes: task.notes,
         allowed_files: task.allowed_files,
-      })),
-      acceptance: mergeAcceptance(seeded, parsed.acceptance),
+      };
+    });
+    for (const task of tasks) task.depends_on = remapDepends(task.depends_on, idMap);
+    return {
+      run_id: runId,
+      updated_at: nowIso(),
+      tasks,
+      acceptance: mergeAcceptance(seeded, parsed.acceptance, workspace, goal),
     };
   }
   return {
@@ -183,13 +202,18 @@ function tasksFromPlanner(runId: string, goal: string, result: ExecResult, exist
         depends_on: [],
       },
     ],
-    acceptance: mergeAcceptance(seeded, [
-      {
-        id: "A1",
-        criterion: "Project test or build command exits 0",
-        kind: "test",
-      },
-    ]),
+    acceptance: mergeAcceptance(
+      seeded,
+      [
+        {
+          id: "A1",
+          criterion: "Project test or build command exits 0",
+          kind: "test",
+        },
+      ],
+      workspace,
+      goal,
+    ),
   };
 }
 
@@ -290,17 +314,18 @@ function discoverEvidenceText(result: ExecResult): string {
   return parts.filter(Boolean).join("\n\n") || "(no explorer yield)";
 }
 
-async function persistExec(store: RunStore, runId: string, phase: string, result: ExecResult): Promise<void> {
+export async function persistExec(store: RunStore, runId: string, phase: string, result: ExecResult): Promise<void> {
+  const phaseName = isSafeId(phase) ? phase : safeId(phase.replace(/[^A-Za-z0-9_-]+/g, "_"), "id_sanitized");
   const worker = "yield" in result ? (result as SpawnResult).yield : undefined;
   if (worker) {
-    store.writeArtifact(runId, `yield-${phase}.json`, `${JSON.stringify(worker, null, 2)}\n`);
-    store.writeTextEvidence(runId, "log", `yield-${phase}.json`, JSON.stringify(worker), {
+    store.writeArtifact(runId, `yield-${phaseName}.json`, `${JSON.stringify(worker, null, 2)}\n`);
+    store.writeTextEvidence(runId, "log", `yield-${phaseName}.json`, JSON.stringify(worker), {
       notes: "structured worker yield",
       exit_code: result.exitCode,
     });
     store.mergeFileHashes(runId, worker.file_hashes);
   }
-  writeExecPhaseSnapshots(store, runId, phase, result, {
+  writeExecPhaseSnapshots(store, runId, phaseName, result, {
     hashes: worker?.file_hashes || store.loadFileHashes(runId),
     yieldStatus: worker?.status ?? null,
   });
@@ -607,7 +632,7 @@ async function drive(
       return rejectPlanningYield(store, runId, "PLAN", result, opts, planKind);
     }
     store.writePlan(runId, planMarkdown(run.goal, discoverBody, yieldSummary(result, "planner yield")));
-    store.writeTasks(runId, tasksFromPlanner(runId, run.goal, result, store.loadTasks(runId)));
+    store.writeTasks(runId, tasksFromPlanner(runId, run.goal, result, store.loadTasks(runId), opts.workspace));
   }
 
   if (ctrl.stopAfter === "PLAN_REVIEW" || shouldRun(store.load(runId).phase, "PLAN_REVIEW", ctrl.resumeFrom)) {

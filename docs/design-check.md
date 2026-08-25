@@ -239,6 +239,11 @@ After each cut, eight questions. A failing check is a change, not a footnote.
 - Did not drop the one-rerun on stale workspace source hashes.
 - Did not pretend Hashline / LSP / browser would catch Oh-My-Pi / Oh-My-OpenCode. Those are host ceilings.
 - Did not become DeepSeek Harness (Cordis, plugin-everything, goal-round-driver, model-facing Goal tools, LLM compaction, remind-and-repair extra host exec).
+- Did not spawn planner `acceptance.command` as `shell: true`.
+- Did not let `task.id` / evidence `name` / `..` write outside the run dir.
+- Did not let a workspace config file set `permission: full`.
+- Did not rewrite ProcessMcode / host env (mcode needs credentials).
+- Did not add Cordis, hooks, a sixth worker, or live `mcode` in CI.
 
 ## 19. Root AGENTS.md (contributor operating manual)
 
@@ -311,3 +316,16 @@ Refused: Cordis / plugin-everything / profiles / bundles / `--dump-config`. Suba
 6. **Host honesty?** **Pass, enforced.** `timedOut` is true if our timer fired **or** host exit 6, even when `exitCode===0`. SIGTERM-from-our-timer is not a native crash. `isHostNativeCrash` still needs crash exit + sqlite/assert/SIGABRT stderr. We do not invent HTTP/OMP block codes. We do not add an extra host exec on the repeat-finding path.
 7. **Hero stays `max`?** Yes. Goal/guard/timeout are implementation details of `max` / `plan` / `team`.
 8. **Codex-as-platform fit?** Goal snapshot is run-store state (thread). `goal_changed` / `guard_fired` are EQ events. Typed yield stays strict. No compaction channel. No second runtime.
+
+## 25. Untrusted planner yield + untrusted workspace config (verify allowlist / path confine)
+
+Threat model: planner `WorkerYield` / task graph is untrusted (shell strings, `../` ids). Workspace `.minimax/oh-my-mcode.json` is untrusted. We still run the workspace's own allowlisted `npm test` (that is intended). Host `ProcessMcode` env is not scrubbed (mcode needs credentials). Acceptance spawn env is.
+
+1. **Verified delivery?** Yes — VERIFY still requires a runnable allowlisted command plus evidence files. A planner `curl|sh` cannot become Accept. Path escape cannot plant evidence outside the run dir. Workspace `permission: full` cannot silently widen builder host permission.
+2. **Harness not prompt pack?** Yes — allowlist, argv spawn, `safeId` / `assertUnder` are TypeScript. Role files unchanged. No sixth worker. No Cordis / hooks.
+3. **One core, many surfaces?** `runDeterministicVerify` / `runCaptured` / `mergeAcceptance` are the only verify spawn path. MCP `omm_verify` still `Harness.submit({ op: "verify" })`. Store writes go through `assertUnder`. TUI `scripts/run-store.mjs` rejects unsafe evidence names the same way.
+4. **Subagents are workers not trees?** Unchanged. Five roles. One exec each. No grandchild API. Planner cannot add a shell; it cannot add a worker either.
+5. **MiniMax-native?** Yes — we stay the verified-delivery layer on `mcode`. Hero stays `oh-my-mcode max`. We did not add a host tool or registered agent.
+6. **Host honesty?** **Pass, enforced.** We do not spawn non-allowlisted strings (`shell: false` on the closed argv map only). We do not follow `../` artifact / worktree ids out of the run dir. We do not let a workspace file raise permission to `full`. We still run the project's own `npm test` when that is the named/detected command. Tests are exploit-shaped: `touch PWNED && npm test` must not create `PWNED`; `writeArtifact(..., "../../outside.txt")` must not create a file outside the run dir.
+7. **Hero stays `max`?** Yes. Allowlist / confine are implementation details of VERIFY and the run store.
+8. **Codex-as-platform fit?** Approvals stay `--permission` / verifier-only Accepted. Workspace config cannot mint `full`. Typed yield stays strict. No live `mcode` in CI.

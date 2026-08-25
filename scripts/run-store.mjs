@@ -589,8 +589,15 @@ function addEvidence(workspace, runId, flags) {
     const indexPath = path.join(dir, "evidence/index.json");
     const index = existsSync(indexPath) ? readJson(indexPath) : { run_id: runId, items: [] };
     const destName = flags.name || `${nextEvidenceId(index.items)}-${path.basename(src)}`;
+    if (!destName || destName !== path.basename(destName) || destName.includes("..")) {
+      fail(`unsafe evidence name: ${destName}`);
+    }
     const destRel = path.posix.join("evidence", destName);
-    const destAbs = path.join(dir, "evidence", destName);
+    const evidenceRoot = path.join(dir, "evidence");
+    const destAbs = path.resolve(evidenceRoot, destName);
+    const root = path.resolve(evidenceRoot);
+    const prefix = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
+    if (destAbs !== root && !destAbs.startsWith(prefix)) fail(`path escapes evidence dir: ${destName}`);
     const existingIdx = index.items.findIndex((item) => item.path === destRel);
     const id = existingIdx >= 0 ? index.items[existingIdx].id : nextEvidenceId(index.items);
     copyFileSync(src, destAbs);

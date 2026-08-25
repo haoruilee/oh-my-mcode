@@ -4,9 +4,10 @@ import path from "node:path";
 import type { AcceptanceItem, FindingItem, Findings, Role } from "./types.js";
 import type { RunStore } from "./store.js";
 import type { ExecResult, McodeClient } from "./mcode.js";
-import { nowIso } from "./util.js";
+import { CliError, nowIso } from "./util.js";
 import { verifierPrompt } from "./prompts.js";
 import { staleFileHashes } from "./hash.js";
+import { safeId } from "./safe-path.js";
 
 export interface DetectedCommands {
   test?: string;
@@ -61,9 +62,68 @@ export function detectProjectCommands(workspace: string): DetectedCommands {
   return { source: "none" };
 }
 
+/** Closed set of verify strings. Exact match after trim. No interpolation. */
+export const VERIFY_COMMAND_ARGV: Record<string, readonly [string, ...string[]]> = {
+  "npm test": ["npm", "test"],
+  "npm run build": ["npm", "run", "build"],
+  "go test ./...": ["go", "test", "./..."],
+  "cargo test": ["cargo", "test"],
+  "cargo build": ["cargo", "build"],
+  "pytest": ["pytest"],
+  "make test": ["make", "test"],
+  "node --test": ["node", "--test"],
+};
+
+export function verifyCommandArgv(command: string): readonly [string, ...string[]] | undefined {
+  return VERIFY_COMMAND_ARGV[command.trim()];
+}
+
+const NAMED_VERIFY_CHECKS: Array<{ re: RegExp; command: string }> = [
+  { re: /\bnpm run build\b/i, command: "npm run build" },
+  { re: /\bnpm run test\b/i, command: "npm test" },
+  { re: /\bnpm test\b/i, command: "npm test" },
+  { re: /\bgo test\b/i, command: "go test ./..." },
+  { re: /\bcargo test\b/i, command: "cargo test" },
+  { re: /\bcargo build\b/i, command: "cargo build" },
+  { re: /\bpytest\b/i, command: "pytest" },
+  { re: /\bmake test\b/i, command: "make test" },
+  { re: /\bnode --test\b/i, command: "node --test" },
+];
+
+/**
+ * Closed verify set for this workspace + goal: named check ∪ detectProjectCommands.
+ * Exact string match after trim. Planner cannot add a new shell string.
+ */
+export function allowedVerifyCommands(workspace: string, goal: string): string[] {
+  const allowed = new Set<string>();
+  for (const row of NAMED_VERIFY_CHECKS) {
+    if (row.re.test(goal)) {
+      allowed.add(row.command.trim());
+      break;
+    }
+  }
+  const detected = detectProjectCommands(workspace);
+  if (detected.test) allowed.add(detected.test.trim());
+  if (detected.build) allowed.add(detected.build.trim());
+  return [...allowed];
+}
+
+export function isAllowedVerifyCommand(command: string, allowed: Iterable<string>): boolean {
+  return new Set([...allowed].map((item) => item.trim())).has(command.trim());
+}
+
+const SECRET_KEY_RE = /(^|_)(KEY|SECRET|TOKEN|PASSWORD|AUTHORIZATION|CREDENTIAL)s?$/i;
+const SECRET_NAMES = new Set([
+  "AWS_SECRET_ACCESS_KEY",
+  "OPENAI_API_KEY",
+  "MINIMAX_API_KEY",
+  "GH_TOKEN",
+]);
+
 /**
  * Drop parent npm lifecycle and `NODE_TEST_CONTEXT` so an acceptance
  * `npm test` / `node --test` runs the workspace suite.
+ * Also drop secret-shaped keys from this spawn only (not ProcessMcode / host env).
  * Failure modes: nested npm hits the harness package; parent `node --test`
  * makes the fixture's `node --test` skip files and exit 0 (false Accept).
  */
@@ -71,6 +131,7 @@ export function cleanSpawnEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.Pro
   const env = { ...base };
   for (const key of Object.keys(env)) {
     if (key === "INIT_CWD" || key.startsWith("npm_") || key.startsWith("NODE_TEST")) delete env[key];
+    else if (SECRET_NAMES.has(key) || SECRET_KEY_RE.test(key)) delete env[key];
   }
   return env;
 }
@@ -80,14 +141,18 @@ export async function runCaptured(
   cwd: string,
   timeoutMs = 10 * 60 * 1000,
 ): Promise<{ exitCode: number; output: string }> {
+  const argv = verifyCommandArgv(command);
+  if (!argv) {
+    throw new CliError(`refused verify command (not on allowlist): ${command}`);
+  }
   return new Promise((resolve, reject) => {
-    const child = spawn(command, {
+    const child = spawn(argv[0], argv.slice(1), {
       cwd,
       env: cleanSpawnEnv(),
-      shell: true,
+      shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
-    let output = `$ ${command}\n`;
+    let output = `$ ${argv.join(" ")}\n`;
     child.stdout?.on("data", (chunk: Buffer) => {
       output += chunk.toString("utf8");
     });
@@ -115,7 +180,9 @@ export async function runDeterministicVerify(
   workspace: string,
 ): Promise<DeterministicResult> {
   const tasks = store.loadTasks(runId);
+  const run = store.load(runId);
   const detected = detectProjectCommands(workspace);
+  const allowed = allowedVerifyCommands(workspace, run.goal);
   const acceptance: AcceptanceItem[] = [];
   const findings: FindingItem[] = [];
   const commands: string[] = [];
@@ -158,8 +225,33 @@ export async function runDeterministicVerify(
   }
 
   for (const row of toRun) {
-    const id = row.item?.id || `A${n}`;
+    const id = safeId(row.item?.id, `A${n}`);
     n += 1;
+    if (!isAllowedVerifyCommand(row.command, allowed) || !verifyCommandArgv(row.command)) {
+      const rel = `${id}-refused.log`;
+      const detail = `refused verify command (not on allowlist): ${row.command}\nnot spawned\n`;
+      store.writeTextEvidence(runId, "log", rel, detail, {
+        command: row.command,
+        notes: "command refused; not spawned",
+      });
+      writtenEvidence.push(`evidence/${rel}`);
+      acceptance.push({
+        id,
+        criterion: row.item?.criterion || `Command succeeds: ${row.command}`,
+        kind: row.kind === "build" ? "build" : "test",
+        result: "fail",
+        evidence: [`evidence/${rel}`],
+      });
+      findings.push({
+        id: `F${findings.length + 1}`,
+        severity: "blocker",
+        title: `Command refused: ${row.command}`,
+        detail,
+        evidence: [`evidence/${rel}`],
+        class: "command_refused",
+      });
+      continue;
+    }
     commands.push(row.command);
     const result = await runCaptured(row.command, workspace);
     const rel = `${id}-${row.kind}.log`;

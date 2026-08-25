@@ -33,6 +33,23 @@ export interface InstallOptions {
   installHost?: HostInstaller;
   refreshPath?: () => void;
   confirm?: (message: string) => Promise<boolean>;
+  /** Test injection. Defaults to `process.stdin.isTTY`. */
+  stdinIsTTY?: boolean;
+}
+
+/**
+ * Host install is skipped on non-TTY stdin unless `--yes`.
+ * Does not change global `promptYesNo` (CI `--approve-plan` still defaults).
+ */
+export function shouldAttemptHostInstall(opts: {
+  yes?: boolean;
+  skipHost?: boolean;
+  hostPresent: boolean;
+  stdinIsTTY?: boolean;
+}): boolean {
+  if (opts.hostPresent || opts.skipHost) return false;
+  if (opts.yes) return true;
+  return Boolean(opts.stdinIsTTY);
 }
 
 export interface InstallResult {
@@ -142,6 +159,28 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
   let hostInstallAttempted = false;
   let hostInstalled = false;
   let hostError: string | undefined;
+
+  const stdinIsTTY = opts.stdinIsTTY ?? Boolean(process.stdin.isTTY);
+  if (!presentBefore && !skipHost && !shouldAttemptHostInstall({
+    yes: opts.yes,
+    skipHost,
+    hostPresent: presentBefore,
+    stdinIsTTY,
+  })) {
+    log("stdin is not a TTY; skipping host install (plugin-only). Pass --yes to install the host.");
+    const plugin = installPlugin({ yes: opts.yes });
+    return {
+      dest: plugin.dest,
+      packageRoot: plugin.packageRoot,
+      yes: plugin.yes,
+      skip_host: true,
+      host_present_before: false,
+      host_install_attempted: false,
+      host_installed: false,
+      host_present_after: exists(),
+      plugin_installed: true,
+    };
+  }
 
   if (!presentBefore && !skipHost) {
     log(`mcode is not on PATH. Will install official ${OFFICIAL_HOST_PACKAGE} (global npm), then this plugin.`);

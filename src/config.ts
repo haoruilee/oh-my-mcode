@@ -37,14 +37,18 @@ function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function readConfigFile(filePath: string): Partial<OmmConfig> {
+function readConfigFile(filePath: string, source: "home" | "workspace" = "home"): Partial<OmmConfig> {
   if (!existsSync(filePath)) return {};
   try {
     const raw = asObject(JSON.parse(readFileSync(filePath, "utf8")));
     const teamRaw = asObject(raw.team);
     const next: Partial<OmmConfig> = {};
     if (typeof raw.permission === "string" && PERMISSIONS.includes(raw.permission as Permission)) {
-      next.permission = raw.permission as Permission;
+      if (source === "workspace" && raw.permission === "full") {
+        // Workspace file cannot silently raise permission to full.
+      } else {
+        next.permission = raw.permission as Permission;
+      }
     }
     if (typeof raw.maxRepairs === "number" && Number.isFinite(raw.maxRepairs) && raw.maxRepairs >= 0) {
       next.maxRepairs = Math.floor(raw.maxRepairs);
@@ -81,8 +85,8 @@ function mergeConfig(base: OmmConfig, overlay: Partial<OmmConfig>): OmmConfig {
 export function loadConfig(workspace: string): OmmConfig {
   const paths = configPaths(workspace);
   let cfg = { ...DEFAULT_CONFIG, team: { ...DEFAULT_CONFIG.team } };
-  cfg = mergeConfig(cfg, readConfigFile(paths.home));
-  cfg = mergeConfig(cfg, readConfigFile(paths.workspace));
+  cfg = mergeConfig(cfg, readConfigFile(paths.home, "home"));
+  cfg = mergeConfig(cfg, readConfigFile(paths.workspace, "workspace"));
   return cfg;
 }
 
