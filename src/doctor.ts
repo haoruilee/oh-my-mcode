@@ -6,6 +6,13 @@ import { packageRoot, which } from "./util.js";
 import { pluginInstallDir } from "./install.js";
 import { RunStore } from "./store.js";
 import { mcodeExists, resolveMcodeInvocation } from "./mcode.js";
+import {
+  compareHostVersion,
+  formatHostCapabilities,
+  formatHostVersion,
+  hostCapabilities,
+  parseHostVersion,
+} from "./host-version.js";
 
 export interface DoctorCheck {
   id: string;
@@ -29,20 +36,40 @@ function nodeMajor(): number {
   return Number(process.versions.node.split(".")[0]);
 }
 
-function parseMcodeVersion(text: string): string | undefined {
-  const match = text.match(/(\d+\.\d+\.\d+)/);
-  return match?.[1];
+export function readHostVersionText(mcodePath: string): string {
+  return execFileSync(
+    mcodePath.endsWith(".mjs") ? process.execPath : mcodePath,
+    mcodePath.endsWith(".mjs") ? [mcodePath, "--version"] : ["--version"],
+    { encoding: "utf8" },
+  );
 }
 
-function cmpSemver(a: string, b: string): number {
-  const pa = a.split(".").map((n) => Number(n));
-  const pb = b.split(".").map((n) => Number(n));
-  for (let i = 0; i < 3; i += 1) {
-    const da = pa[i] || 0;
-    const db = pb[i] || 0;
-    if (da !== db) return da - db;
-  }
-  return 0;
+/** Build mcode + capability checks from an injected version string (no live binary). */
+export function doctorHostChecks(input: { versionText: string; mcodePath?: string }): DoctorCheck[] {
+  const parsed = parseHostVersion(input.versionText);
+  const caps = hostCapabilities(parsed);
+  const version = formatHostVersion(parsed);
+  const tooOld = parsed ? compareHostVersion(parsed, { major: 0, minor: 1, patch: 6 }) < 0 : false;
+  const where = input.mcodePath ? ` at ${input.mcodePath}` : "";
+  const checks: DoctorCheck[] = [
+    {
+      id: "mcode",
+      ok: Boolean(parsed) && !tooOld,
+      level: !parsed || tooOld ? "error" : "note",
+      message: !parsed
+        ? `mcode version unparsed${where}: ${input.versionText.trim().slice(0, 80) || "(empty)"}`
+        : tooOld
+          ? `mcode ${version} is older than tested 0.1.6`
+          : `mcode ${version}${where}`,
+    },
+    {
+      id: "host-capabilities",
+      ok: true,
+      level: "note",
+      message: formatHostCapabilities(caps),
+    },
+  ];
+  return checks;
 }
 
 export interface SmokeResult {
@@ -95,7 +122,7 @@ export function runDoctorSmoke(): SmokeResult {
   }
 }
 
-export function runDoctor(opts: { packageOnly?: boolean; smoke?: boolean } = {}): DoctorReport {
+export function runDoctor(opts: { packageOnly?: boolean; smoke?: boolean; hostVersionText?: string } = {}): DoctorReport {
   const root = packageRoot();
   const checks: DoctorCheck[] = [];
   const add = (check: DoctorCheck) => checks.push(check);
@@ -173,6 +200,8 @@ export function runDoctor(opts: { packageOnly?: boolean; smoke?: boolean } = {})
       "worktree.ts",
       "tool-repair.ts",
       "session.ts",
+      "host-events.ts",
+      "host-version.ts",
       "harness.ts",
       "subagent.ts",
       "interview.ts",
@@ -237,32 +266,25 @@ export function runDoctor(opts: { packageOnly?: boolean; smoke?: boolean } = {})
 
   if (!opts.packageOnly) {
     const mcode = which("mcode") || process.env.OMM_MCODE;
-    if (!mcode) {
+    if (!mcode && !opts.hostVersionText) {
       add({
         id: "mcode",
         ok: false,
         level: "error",
-        message: "mcode is not on PATH. Install @minimax-ai/code 0.1.6+.",
+        message: "mcode is not on PATH. Install @minimax-ai/code 0.2.7+.",
       });
     } else {
-      let versionText = "";
-      try {
-        versionText = execFileSync(mcode.endsWith(".mjs") ? process.execPath : mcode, mcode.endsWith(".mjs") ? [mcode, "--version"] : ["--version"], {
-          encoding: "utf8",
-        });
-      } catch (error) {
-        versionText = (error as Error).message;
+      let versionText = opts.hostVersionText || "";
+      if (!versionText && mcode) {
+        try {
+          versionText = readHostVersionText(mcode);
+        } catch (error) {
+          versionText = (error as Error).message;
+        }
       }
-      const version = parseMcodeVersion(versionText) || "unknown";
-      const old = version !== "unknown" && cmpSemver(version, "0.1.6") < 0;
-      add({
-        id: "mcode",
-        ok: !old,
-        level: old ? "error" : "note",
-        message: old
-          ? `mcode ${version} is older than tested 0.1.6`
-          : `mcode ${version} at ${mcode}`,
-      });
+      for (const check of doctorHostChecks({ versionText, mcodePath: mcode || undefined })) {
+        add(check);
+      }
     }
     add({
       id: "skill-index-api",

@@ -70,6 +70,7 @@ test("host present: install writes plugin and does not invoke host installer", a
       assert.equal(result.host_installed, false);
       assert.equal(result.plugin_installed, true);
       assert.ok(existsSync(path.join(result.dest, "plugin.json")));
+      assert.match(cap.logs.join(""), /Confirm on mcode 0\.2\.7\+/);
     } finally {
       cap.restore();
     }

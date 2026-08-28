@@ -53,7 +53,7 @@ echo
 echo "This is a local marketplace drop-in. Official MiniMax catalog listing is separate"
 echo "and this plugin does not claim to be listed there."
 echo
-echo "Confirm on mcode 0.1.6:"
+echo "Confirm on mcode 0.2.7+:"
 echo "  mcode --version"
 echo "  mcode plugin list -m local"
 echo "  mcode plugin list -m local --json"

@@ -80,7 +80,7 @@ export class CliError extends Error {
 }
 
 export class McodeMissingError extends CliError {
-  constructor(message = "mcode is not on PATH. Install MiniMax Code CLI (@minimax-ai/code) 0.1.6+.") {
+  constructor(message = "mcode is not on PATH. Install MiniMax Code CLI (@minimax-ai/code) 0.2.7+.") {
     super(message, 2);
     this.name = "McodeMissingError";
   }

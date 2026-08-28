@@ -36,6 +36,7 @@ export const EVENT_TYPES = [
   "hud_attached",
   "run_cancelled",
   "host_session_bound",
+  "host_event",
   "interview_completed",
   "subagent_spawned",
   "goal_changed",
@@ -102,7 +103,16 @@ export interface RunRecord {
   host_session_id?: string;
   host_continue?: boolean;
   host_session_source?: "host" | "synthesized" | "user";
+  /** Host Goal settlement/budget facts from structured exec events. Not our acceptance authority. */
+  host_goal?: HostGoalFacts;
   usage?: UsageTotals;
+}
+
+/** Copied from structured host events only. VERIFY/REPAIR/guard still decide Accept. */
+export interface HostGoalFacts {
+  phase?: string;
+  budget?: unknown;
+  settled?: boolean | string;
 }
 
 export interface HostModel {

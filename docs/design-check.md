@@ -343,3 +343,16 @@ Threat model: after `repeat-finding` / `repair-cap` / `host-crash`, a human (or 
 6. **Host honesty?** **Pass, enforced.** Blocked run + `runResume` keeps `status=blocked`, `repair_count` unchanged, exec count unchanged. Emit the original `blockedReason.code` / message. We do not start a goal round on a blocked snapshot.
 7. **Hero stays `max`?** Yes. Refusal is an implementation detail of resume / `max --run-id`.
 8. **Codex-as-platform fit?** Guard block is the approval failure. Resume is not an override. No extra host exec.
+
+## 27. Host CLI 0.2.4–0.2.7: structured exec events, session-from-metadata, version flags
+
+Official CLI changelog through **0.2.7** (2026-08-28). 0.2.4 added structured `mcode exec` events, documented `--output-schema`, ACP Session fork/queue/Steer/Goal, Plugin Hooks, and host Goal budgets/settlement. 0.2.5–0.2.7 are mostly TUI. We stay a verified-delivery harness on `mcode exec`. Exact 0.2.4 event type strings were not in-repo after the 0.2.1 rematch; we keep a closed alias table and do not invent a Goal wire protocol.
+
+1. **Verified delivery?** Yes — session bind is no longer model-controlled (`YOUR SESSION ID:` in assistant text cannot mint `--session`). Structured `exec.result` / `metadata` / host `cursor` still bind `mvs_*`. Accept still requires our verifier + evidence. Host Goal settlement is copied onto optional `host_goal` and logged `host_event`; it cannot Accept.
+2. **Harness not prompt pack?** Yes — `src/host-events.ts` + `src/host-version.ts` + tighter `extractHostSessionId`. Role files unchanged. No new SKILL. No ACP client.
+3. **One core, many surfaces?** Same `mcode exec` argv for CLI and MCP. `doctor` / `inspect model-policy` report parsed version + capability flags. Default argv still omits `--output-schema`.
+4. **Subagents are workers not trees?** Unchanged. Five roles. One exec each. Compaction / queue / steer / host Goal events do not spawn a host exec.
+5. **MiniMax-native?** Yes — we follow the live 0.2.1 rematch plus the official 0.2.4–0.2.7 changelog. Hero stays `oh-my-mcode max`. We did not adopt Hooks, TUI `/sessions` `/history`, ACP, or Desktop Browser.
+6. **Host honesty?** **Pass, enforced.** `--output-schema` is documented since 0.2.4; we omit it until a live rematch proves it is not exit 70 (`OMM_HOST_OUTPUT_SCHEMA=1` remains the probe). Doctor text says so. Missing `mcode` still fails doctor. Version parser is injectable (no live binary in CI). Host ceilings (17–20k input tax, Node 24 sqlite abort) stay unless new evidence.
+7. **Hero stays `max`?** Yes. Event classify / session bind / version flags are implementation details of workers inside `max` / `plan` / `doctor`.
+8. **Codex-as-platform fit?** Typed stream events are harness concerns. EQ can record `host_event`. We did not add a host Goal loop, Hashline, hooks, `/max`, or npm publish.
