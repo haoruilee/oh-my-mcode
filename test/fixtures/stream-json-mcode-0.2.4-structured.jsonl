@@ -1,0 +1,11 @@
+{"_comment":"Synthetic 0.2.4+ structured exec aliases. Exact host type strings were not in-repo after the 0.2.1 live rematch. Closed alias table in src/host-events.ts. Not a live CI run."}
+{"type":"session","sessionId":"mvs_structured01"}
+{"type":"delta","role":"assistant","content":"{\"status\":\"ok\",\"summary\":\"pong\",\"findings\":[],\"artifacts\":[]}"}
+{"type":"goal_budget","budget":{"remaining":2,"limit":5}}
+{"type":"goal_settled","settled":true,"phase":"complete"}
+{"type":"compaction","reason":"tool_result"}
+{"type":"tool_trim","bytes":1200}
+{"type":"queue","queued":1}
+{"type":"steer","target":"queued"}
+{"type":"model","model":{"providerId":"minimax","modelId":"MiniMax-M3","variant":"thinking"}}
+{"schemaVersion":1,"type":"exec.result","sessionId":"mvs_structured01","status":"succeeded","durationMs":900,"model":{"providerId":"minimax","modelId":"MiniMax-M3","variant":"thinking"},"answer":"{\"status\":\"ok\",\"summary\":\"pong\",\"findings\":[],\"artifacts\":[]}"}

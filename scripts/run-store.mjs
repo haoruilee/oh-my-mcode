@@ -70,6 +70,7 @@ const EVENT_TYPES = [
   "hud_attached",
   "run_cancelled",
   "host_session_bound",
+  "host_event",
   "goal_changed",
   "guard_fired",
 ];

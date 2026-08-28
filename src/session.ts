@@ -2,10 +2,15 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type { ExecRequest, ExecResult, McodeClient, StreamEvent } from "./mcode.js";
 import { applyRoleDefaults, sessionXorContinue } from "./mcode.js";
-import type { RunRecord } from "./types.js";
+import type { HostGoalFacts, RunRecord } from "./types.js";
 import type { RunStore } from "./store.js";
 import { execWithRepair } from "./tool-repair.js";
 import { extractUsage, mergeUsage } from "./usage.js";
+import {
+  classifyHostEvent,
+  extractStructuredExec,
+  shouldRecordHostEvent,
+} from "./host-events.js";
 
 export interface SessionOpts {
   noSession?: boolean;
@@ -47,91 +52,13 @@ export function extractMvsSessionId(text: string): string | undefined {
   return undefined;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
-function stringId(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
 /**
- * Pull a host session id from stream-json. Prefer session / session_id / sessionId;
- * accept `id` only on exec.result / metadata (not random event ids).
+ * Bind a host session id from structured fields only (`exec.result` / `metadata` /
+ * session-like events / host `cursor`). Never from `result.text`, assistant
+ * content, or `YOUR SESSION ID:` prose. Never a bare `session_id` that is not `mvs_*`.
  */
 export function extractHostSessionId(result: ExecResult): string | undefined {
-  if (result.text) {
-    const reminder = decodeHostCursor(result.text).match(HOST_SESSION_REMINDER_RE);
-    if (reminder?.[1] && !isSynthesizedSessionToken(reminder[1])) return reminder[1];
-  }
-  const blobs: unknown[] = [
-    ...result.events.map((event) => event.raw),
-    ...result.rawLines.map((line) => {
-      try {
-        return JSON.parse(line);
-      } catch {
-        return undefined;
-      }
-    }),
-  ];
-  for (const blob of blobs) {
-    const found = findSessionId(blob);
-    if (found) return found;
-  }
-  return undefined;
-}
-
-function findSessionId(value: unknown, depth = 0, allowBareId = false): string | undefined {
-  if (value == null || depth > 8) return undefined;
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = findSessionId(item, depth + 1, allowBareId);
-      if (found) return found;
-    }
-    return undefined;
-  }
-  const rec = asRecord(value);
-  if (!rec) return undefined;
-
-  for (const key of ["session", "session_id", "sessionId", "host_session_id"]) {
-    const found = stringId(rec[key]);
-    if (found && !isSynthesizedSessionToken(found)) return found;
-  }
-  if (typeof rec.cursor === "string") {
-    const fromCursor = extractMvsSessionId(rec.cursor);
-    if (fromCursor) return fromCursor;
-  }
-  for (const key of ["content", "text", "thinking", "answer"]) {
-    if (typeof rec[key] !== "string") continue;
-    const reminder = decodeHostCursor(rec[key]).match(HOST_SESSION_REMINDER_RE);
-    if (reminder?.[1] && !isSynthesizedSessionToken(reminder[1])) return reminder[1];
-  }
-  if (allowBareId) {
-    const found = stringId(rec.id);
-    if (found && !found.startsWith("evt_")) return found;
-  }
-
-  if (rec.metadata !== undefined) {
-    const found = findSessionId(rec.metadata, depth + 1, true);
-    if (found) return found;
-  }
-  if (rec.result !== undefined) {
-    const found = findSessionId(rec.result, depth + 1, true);
-    if (found) return found;
-  }
-  if (rec.exec !== undefined) {
-    const found = findSessionId(rec.exec, depth + 1, true);
-    if (found) return found;
-  }
-
-  for (const [key, child] of Object.entries(rec)) {
-    if (key === "metadata" || key === "result" || key === "exec") continue;
-    const found = findSessionId(child, depth + 1, false);
-    if (found) return found;
-  }
-  return undefined;
+  return extractStructuredExec(result).sessionId;
 }
 
 export function applyRequestedSession(store: RunStore, runId: string, opts: SessionOpts): void {
@@ -254,6 +181,40 @@ function maybeAppendToolCalled(store: RunStore, runId: string, event: StreamEven
   });
 }
 
+/** Record goal/compaction/queue/steer. Do not spawn or settle our goal. */
+function maybeAppendHostEvent(store: RunStore, runId: string, event: StreamEvent): void {
+  if (!shouldRecordHostEvent(event)) return;
+  store.appendEvent(runId, "host_event", {
+    type: event.type,
+    class: classifyHostEvent(event),
+  });
+}
+
+function overlayHostGoal(current: HostGoalFacts | undefined, next: HostGoalFacts | undefined): HostGoalFacts | undefined {
+  if (!next) return current;
+  if (!current) return { ...next };
+  return {
+    phase: next.phase ?? current.phase,
+    budget: next.budget ?? current.budget,
+    settled: next.settled ?? current.settled,
+  };
+}
+
+function rememberHostStructured(store: RunStore, runId: string, result: ExecResult): void {
+  const structured = extractStructuredExec(result);
+  if (!structured.goal) return;
+  if (
+    structured.goal.budget === undefined &&
+    structured.goal.settled === undefined &&
+    !structured.goal.phase
+  ) {
+    return;
+  }
+  const current = store.load(runId);
+  const host_goal = overlayHostGoal(current.host_goal, structured.goal);
+  if (host_goal) store.patchRun(runId, { host_goal });
+}
+
 export async function execTracked(
   client: McodeClient,
   store: RunStore,
@@ -266,9 +227,11 @@ export async function execTracked(
   prepared.onEvent = (event) => {
     userOnEvent?.(event);
     maybeAppendToolCalled(store, runId, event);
+    maybeAppendHostEvent(store, runId, event);
   };
   const result = await execWithRepair(client, prepared, { store, runId });
   rememberHostSession(store, runId, result, prepared, opts);
+  rememberHostStructured(store, runId, result);
   const usage = result.usage || extractUsage(result.events, result.rawLines);
   if (usage) {
     result.usage = usage;

@@ -136,7 +136,7 @@ export function installPlugin(opts: { yes?: boolean } = {}): { dest: string; pac
   log("");
   log("This is a local marketplace drop-in. Official MiniMax catalog listing is separate.");
   log("We do not own mcode. This package is the verified-delivery harness; @minimax-ai/code is the host.");
-  log("Confirm on mcode 0.1.6:");
+  log("Confirm on mcode 0.2.7+:");
   log("  mcode --version");
   log("  mcode plugin list -m local");
   log("  mcode plugin list -m local --json");

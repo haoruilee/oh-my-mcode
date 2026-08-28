@@ -13,7 +13,7 @@ import { runInspect } from "../dist/inspect.js";
 import { applyHostSession, synthesizeSessionToken } from "../dist/session.js";
 import { plannerYield, yieldResult } from "./helpers/yield.mjs";
 
-const SESSION_ID = "host-sess-abc";
+const SESSION_ID = "mvs_hostsess01";
 
 function project(testScript = "node -e \"process.exit(0)\"") {
   const dir = mkdtempSync(path.join(os.tmpdir(), "omm-sess-"));

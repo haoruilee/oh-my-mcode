@@ -53,7 +53,7 @@ Host already has explore / plan / team. Role files do **not** register new host 
 | `agents/*.md` | Five role contracts for the same host process. |
 | `skills/*/SKILL.md` | TUI phrasing (`max` / `plan` / `verify` / …). Not a second loop. |
 | `schemas/*.schema.json` | On-disk schemas. TypeScript validates. |
-| `docs/host-reality.md` | Observed mcode 0.2.1 contract. Read this; do not invent. |
+| `docs/host-reality.md` | Observed CLI contract through mcode 0.2.7 (2026-08-28). Last live rematch was 0.2.1. Read this; do not invent. |
 | `docs/design-check.md` | Eight questions after each cut. Fail → change the cut. |
 | `docs/harness.md` | Codex-as-platform map. |
 | `test/host-contract.test.mjs` | Locked host argv / stream / yield contract. |
@@ -110,13 +110,13 @@ Flat `team` is TypeScript scheduling of sibling builders (`src/team.ts`). Still 
 
 Do not copy this file into a user template. Facts live in [`docs/host-reality.md`](docs/host-reality.md) and are locked in [`test/host-contract.test.mjs`](test/host-contract.test.mjs). Resist bloating `src/orchestrator.ts` / `src/mcode.ts`. New host-contract facts go in `docs/host-reality.md` + a test, not another prompt paragraph.
 
-Observed on **mcode 0.2.1** (2026-08-21), then rematched:
+Observed on **mcode 0.2.1** (2026-08-21), then rematched. Official CLI is **0.2.7** as of 2026-08-28: we consume structured `mcode exec` events and bind `--session` from metadata/`exec.result`/`cursor` (`mvs_*` only), never from `YOUR SESSION ID:` prose. `doctor` / `inspect model-policy` report parsed version + `structuredExec` (≥ 0.2.4) / `outputSchemaDocumented` / `legacyOutputSchemaCrash` (0.2.1 exit 70). Default argv still omits `--output-schema` until a live rematch. Compaction / queue / steer / host Goal settlement are recorded (`host_event` / optional `host_goal`); we do not act on them. Not ACP, not Hooks, not Desktop Browser.
 
 - `--timeout` needs a unit (`180s`). A bare `180` is 180ms (exit 6).
 - `--session` XOR `--continue`. Together → invocation, exit 2.
 - `--permission off` is legal (`ask|smart|full|off`).
 - Exit 1 is crash / incomplete stream, not timeout.
-- Session id is `mvs_…` (also `cursor: sse1:session%3Amvs_…`, `YOUR SESSION ID: mvs_…`).
+- Session id is `mvs_…` from structured fields (`exec.result.sessionId`, `cursor: sse1:session%3Amvs_…`). Assistant `YOUR SESSION ID:` does not bind.
 - Stitch assistant `delta.content`. Persist a typed snapshot. Do **not** dump raw host JSONL into the next prompt.
 - Coerce artifact objects with `path` / `file` to strings. Ignore unknown yield keys. Do **not** invent a WorkerYield from prose.
 - Default argv **omits** `--output-schema` (live host exit 70). `OMM_HOST_OUTPUT_SCHEMA=1` is opt-in only. `schemaMode=strict` stays in TypeScript.

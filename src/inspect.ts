@@ -7,6 +7,11 @@ import { mcodeExists, resolveMcodeInvocation } from "./mcode.js";
 import { RunStore } from "./store.js";
 import { ROLES, type Role } from "./types.js";
 import { loadConfig } from "./config.js";
+import {
+  formatHostCapabilities,
+  hostCapabilities,
+  parseHostVersion,
+} from "./host-version.js";
 
 export const INSPECT_TOPICS = ["tools", "skills", "agents", "context", "runs", "model-policy"] as const;
 export type InspectTopic = (typeof INSPECT_TOPICS)[number];
@@ -257,29 +262,56 @@ function inspectRuns(workspace: string): InspectResult {
   return { topic: "runs", ok: true, data: { workspace: store.workspace, root: store.runsRoot(), runs } };
 }
 
-function inspectModelPolicy(workspace: string): InspectResult {
+function readHostVersionText(): string | undefined {
+  try {
+    const invocation = resolveMcodeInvocation();
+    return execFileSync(invocation.command, [...invocation.prefixArgs, "--version"], {
+      encoding: "utf8",
+      timeout: 8000,
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+function inspectModelPolicy(workspace: string, versionText?: string): InspectResult {
   const cfg = loadConfig(workspace);
+  const text = versionText ?? readHostVersionText();
+  const parsed = text ? parseHostVersion(text) : undefined;
+  const caps = hostCapabilities(parsed);
   return {
     topic: "model-policy",
     ok: true,
     data: {
+      host_version: parsed
+        ? { major: parsed.major, minor: parsed.minor, patch: parsed.patch, raw: parsed.raw }
+        : null,
+      host_capabilities: {
+        structuredExec: caps.structuredExec,
+        outputSchemaDocumented: caps.outputSchemaDocumented,
+        legacyOutputSchemaCrash: caps.legacyOutputSchemaCrash,
+        notes: caps.notes,
+        summary: formatHostCapabilities(caps),
+      },
       send_to_mcode_exec: {
         cwd: "<workspace>",
         output_format: "stream-json",
         permission: cfg.permission,
-        session: "run.json host_session_id once the host returns one; first exec has no --session (no omm_<runId> fake). --no-session forces cold start",
-        continue: "set only when the user passed --continue and no host session id is known. --session and --continue are mutually exclusive on mcode 0.2.1 (invocation, exit 2). After a real mvs_ id, send --session only",
+        session:
+          "run.json host_session_id from structured exec.result / metadata / session-like events / host cursor (mvs_* only). Never from assistant prose or YOUR SESSION ID. First exec has no --session (no omm_<runId> fake). --no-session forces cold start. User --session still wins.",
+        continue:
+          "set only when the user passed --continue and no host session id is known. --session and --continue are mutually exclusive on mcode 0.2.1+ (invocation, exit 2). After a real mvs_ id, send --session only",
         output_schema:
-          "omitted by default (mcode 0.2.1 --output-schema is host-internal exit 70). OMM_HOST_OUTPUT_SCHEMA=1 sends the JSON object from schemas/planner-output.schema.json. Yield is validated in TypeScript.",
+          "documented since 0.2.4; we omit until a live rematch proves it is not exit 70. Live 0.2.1 was exit 70. OMM_HOST_OUTPUT_SCHEMA=1 remains the probe. Yield is validated in TypeScript.",
         file: "verifier/review: latest test log and/or summary.md when present",
         prompt_prefix:
           "Role + goal + task packet + allowed files + acceptance + yield schema. Contract-only. Point at paths; do not paste file bodies.",
         output_schema_workers:
           "schemas/worker-yield.schema.json stays on disk. schemaMode=strict in TypeScript after exec. Host flag only when OMM_HOST_OUTPUT_SCHEMA=1.",
       },
-      we_do_not_send: ["hooks", "custom plugin agents", "registered slash commands", "App UI payloads", "raw host JSONL into the next worker prompt"],
+      we_do_not_send: ["hooks", "custom plugin agents", "registered slash commands", "App UI payloads", "raw host JSONL into the next worker prompt", "ACP Goal / host /goal"],
       role_permissions: Object.fromEntries(ROLES.map((role) => [role, ROLE_CONTRACTS[role].permission])),
-      note: "Project-manager duties stay in TypeScript. mcode exec is a worker, not a recursive scheduler.",
+      note: "Project-manager duties stay in TypeScript. mcode exec is a worker, not a recursive scheduler. Host Goal settlement is recorded; VERIFY remains the acceptance authority.",
     },
   };
 }
@@ -289,6 +321,7 @@ export function runInspect(opts: {
   workspace: string;
   runId?: string;
   packageRoot?: string;
+  hostVersionText?: string;
 }): InspectResult {
   if (opts.topic.startsWith("run://")) {
     return inspectRunAddress(opts.workspace, opts.topic);
@@ -311,7 +344,7 @@ export function runInspect(opts: {
   if (topic === "agents") return inspectAgents(root);
   if (topic === "context") return inspectContext(opts.workspace, opts.runId);
   if (topic === "runs") return inspectRuns(opts.workspace);
-  return inspectModelPolicy(opts.workspace);
+  return inspectModelPolicy(opts.workspace, opts.hostVersionText);
 }
 
 export function formatInspect(result: InspectResult): string {

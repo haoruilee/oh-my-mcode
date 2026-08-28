@@ -1,10 +1,12 @@
-# 宿主现状（mcode 0.1.6，2026-08-20 核实）
+# 宿主现状（CLI 0.2.7，截至 2026-08-28）
 
 这是 **haoruilee** 的社区项目，不是 MiniMax-AI 官方产品，也不主张 MiniMax 所有权。
 
+官方 changelog：[https://agent.minimax.io/docs/changelog](https://agent.minimax.io/docs/changelog)。官方 exec 参数：[https://agent.minimax.io/docs/cli/features.md](https://agent.minimax.io/docs/cli/features.md)。本仓库上次 live rematch 仍是 **mcode 0.2.1**（2026-08-21）。0.2.2–0.2.7 的事实来自 changelog 和我们的封闭别名表——没有去刮活的 0.2.7 宿主。
+
 ## 宿主已经有什么
 
-本插件对应的宿主是 MiniMax Code CLI **`mcode`** 0.1.6（`@minimax-ai/code`）。数据目录是 `~/.minimax`。
+本插件对应的宿主是 MiniMax Code CLI **`mcode`**（`@minimax-ai/code`），文档写到 **0.2.7**。数据目录是 `~/.minimax`。
 
 MiniMax 生态里有三个不同的 CLI。用户安装步骤里不要混写：
 
@@ -37,7 +39,7 @@ MiniMax 生态里有三个不同的 CLI。用户安装步骤里不要混写：
 
 主入口是 `oh-my-mcode max` / 别名 `omm`，加上名为 `max` 的 **Skill**（自然语言）。这不是 `mavis max`，也不是 `mmx` 包装器。宿主命令仍是 `mcode`。
 
-## 本地市场（0.1.6 实测）
+## 本地市场（0.1.6 实测；0.2.7 仍走这条 drop-in）
 
 - 目录：`~/.minimax/plugins`
 - 把插件文件夹放进去会自动安装并启用，不需要 `plugin add`
@@ -55,7 +57,28 @@ MiniMax 生态里有三个不同的 CLI。用户安装步骤里不要混写：
 
 ## 无界面驱动
 
-`mcode exec` 已有 `--session`、`--continue`、`--output-format`、`--output-schema`、`--permission`。以后可以用 `mcode exec` + 加载 max skill 的提示词做无界面驱动。这不是第二条产品 CLI。
+`mcode exec` 已有 `--session`、`--continue`、`--output-format`、`--output-schema`、`--permission`。以后可以用 `mcode exec` + 加载 max skill 的提示词做无界面驱动。这不是第二条产品 CLI。官方 0.2.4+ 文档把 `--output-schema` 写成真实 exec 参数。我们**默认仍不传**：live 0.2.1 是 exit 70，还没有 live rematch 证明 0.2.4+ 不会。`OMM_HOST_OUTPUT_SCHEMA=1` 仍是探测开关。
+
+## 0.2.4–0.2.7 我们消费什么（hermetic）
+
+继续做 `mcode exec` 上的核实交付层。不变成宿主、ACP、桌面 Goal，也不做第二个 Goal 产品。
+
+**消费**
+
+- 已有 `parseStreamLine` / `ExecResult`：`assistant` / `delta` / `tool` / `stderr` / `exec.result` / `usage` / `session`。
+- 仓库里没有 0.2.4 精确 `type` 字符串时的封闭别名：`goal` / `goal_settled` / `goal_budget`，以及只记录不行动的 `compaction` / `tool_trim` / `queue` / `steer`。`classifyHostEvent` 映射到 `session | usage | yield | goal | model | tool | noise`。
+- `extractStructuredExec` 只从 `exec.result` / `metadata` / 带类型的事件取 `{ sessionId, model, goal, usage }`，从不从 assistant 散文取。
+- Session 绑定：只接受来自 `exec.result` / `metadata` / session 类事件 / 宿主 `cursor` 的 `mvs_*`。不绑定 `YOUR SESSION ID:` 散文。用户 `--session` 仍优先。`omm_*` 仍不发送。`--session` XOR `--continue` 不变。
+- `mcode --version` 解析成 `{ major, minor, patch }`。`hostCapabilities`：≥ 0.2.4 有 `structuredExec` / `outputSchemaDocumented`；0.2.1 有 `legacyOutputSchemaCrash`（exit 70）。`doctor` / `inspect model-policy` 报告这些旗标。没有 mcode 时 doctor 照实失败。
+- 结构化 goal 结算/预算可抄到 `RunRecord.host_goal` 并记 `host_event`。验收权仍是我们的 VERIFY / REPAIR / guard。
+
+**不消费（不行动）**
+
+- 在 live rematch 证明不是 exit 70 之前，不自动打开 `--output-schema`。
+- Plugin Hooks、TUI `/sessions` `/history` `/checkin` `/changelog`。
+- 不以 ACP 当主传输。
+- 桌面 Browser / Computer Use / Remote Control。
+- 不调用宿主 `/goal`，不启动宿主 Goal 循环。
 
 **mcode 0.2.1** 的 `--output-schema <json>` 要的是 JSON 对象字符串，不是文件路径。传 `schemas/worker-yield.schema.json` 会失败：
 
@@ -69,7 +92,7 @@ mcode exec failed: --output-schema requires a JSON object.
 
 同一套 0.2.1 宿主里，`--timeout` 由 `chm` 解析：`/^(\d+)(ms|s|m|h)?$/i`。裸整数是**毫秒**，不是秒。PR #9 之后，`oh-my-mcode plan` 绑定了真实 session（`mvs_…`，`host_session_source: host`），随后 discover 以 **exit 6**（`Sw.timeout = 6`）失败：我们给 3 分钟 explorer 默认值传了 `--timeout 180`，宿主当成 180ms。实测 first_token_ms ~6030，然后超时。`doctor --smoke` 不传 `--timeout`，18s 成功；手动 `mcode exec --timeout 45s` 也成功。因此 worker argv 必须带单位后缀（`180s`），从不传裸整数。角色默认值对内仍用毫秒。
 
-同日稍后的 Mac 实测还锁定了：`--output-schema` 默认不传（传了仍 exit 70）；`--max-steps` / `--permission` 角色默认值必须进 argv；exit 1 是崩溃/半截流，不是 timeout；session 也可能在 `cursor: sse1:session%3Amvs_…` 和 `YOUR SESSION ID: mvs_…`；assistant `delta.content` 要拼进 `result.text` 并写成 typed snapshot，不能只留 JSONL 红acted stub；空仓库是 `ok`+note，不是 `blocked`；`doctor --tps` 没有 `message.usage` 就报 `unmeasured`。再一次 hello-pkg live：explorer 读完 fixture 后停在 toolUse（exit 1），reminder 复用了 `mvs_` 却去 hash 文件。PR #12 的 reminder 同时传了 `--session` 和 `--continue`，0.2.1 宿主报 `--session and --continue are mutually exclusive`（invocation，exit 2）。reminder 现在只传 `--session <mvs_>`，保留 `--max-steps 1` 和合法的 `--permission off`，只许文本 yield JSON；不从散文伪造 yield。空 reminder 不得覆盖第一次 exec 的 snapshot。PR #13 之后 reminder argv XOR 已合法，reminder 也写出了 schema 形 yield，但 Node 24.19.0 + better-sqlite3 在 GC 时 abort（`Statement::~Statement` / `RemoveEnvironmentCleanupHook`），JSON 被截断。Node 24 + better-sqlite3 **会** GC abort，这是观察到的事实，不是「不能用 Node 22」。同日 live rematch 用 Node 22 跑宿主 exec，再把 addon 编回 24。因此 reminder / last message 只要 tiny yield；原生崩溃且没有合法 yield 时额外一次只写文本的 crash-retry（不是第二次 schema reminder）。`discover.md` 不得出现 `dyld` / better-sqlite3 栈。同日 rematch（mcode 0.2.1，`test/fixtures/hello-pkg` 副本）：`plan` 到达 PLAN_REVIEW；`max --no-llm-verify` 到达 ACCEPT / `accepted` 并写出了 `hello()`。
+同日稍后的 Mac 实测还锁定了：`--output-schema` 默认不传（传了仍 exit 70）；`--max-steps` / `--permission` 角色默认值必须进 argv；exit 1 是崩溃/半截流，不是 timeout；session 在 `exec.result.sessionId` 和 `cursor: sse1:session%3Amvs_…`（`YOUR SESSION ID: mvs_…` 散文不再绑定）；assistant `delta.content` 要拼进 `result.text` 并写成 typed snapshot，不能只留 JSONL 红acted stub；空仓库是 `ok`+note，不是 `blocked`；`doctor --tps` 没有 `message.usage` 就报 `unmeasured`。再一次 hello-pkg live：explorer 读完 fixture 后停在 toolUse（exit 1），reminder 复用了 `mvs_` 却去 hash 文件。PR #12 的 reminder 同时传了 `--session` 和 `--continue`，0.2.1 宿主报 `--session and --continue are mutually exclusive`（invocation，exit 2）。reminder 现在只传 `--session <mvs_>`，保留 `--max-steps 1` 和合法的 `--permission off`，只许文本 yield JSON；不从散文伪造 yield。空 reminder 不得覆盖第一次 exec 的 snapshot。PR #13 之后 reminder argv XOR 已合法，reminder 也写出了 schema 形 yield，但 Node 24.19.0 + better-sqlite3 在 GC 时 abort（`Statement::~Statement` / `RemoveEnvironmentCleanupHook`），JSON 被截断。Node 24 + better-sqlite3 **会** GC abort，这是观察到的事实，不是「不能用 Node 22」。同日 live rematch 用 Node 22 跑宿主 exec，再把 addon 编回 24。因此 reminder / last message 只要 tiny yield；原生崩溃且没有合法 yield 时额外一次只写文本的 crash-retry（不是第二次 schema reminder）。`discover.md` 不得出现 `dyld` / better-sqlite3 栈。同日 rematch（mcode 0.2.1，`test/fixtures/hello-pkg` 副本）：`plan` 到达 PLAN_REVIEW；`max --no-llm-verify` 到达 ACCEPT / `accepted` 并写出了 `hello()`。
 
 宿主上限（不是产品）：一条约 20 词的 `mcode exec` 仍要付 **1.7–2 万 input tokens**（几乎全是宿主系统/工具）；Node 24 + better-sqlite3 会在 GC 时 abort。那是 `mcode` 的天花板。我们缩小 prompt、锁住 argv/流/yield 契约。Hashline / LSP / 浏览器工具是在改宿主，不是在追上 Oh-My-Pi / Oh-My-OpenCode。本包装继续做 MiniMax Code 上的核实交付层。主入口仍是 `oh-my-mcode max`。
 
