@@ -159,10 +159,24 @@ export async function runCaptured(
       env: cleanSpawnEnv(),
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
     });
     let output = `$ ${argv.join(" ")}\n`;
     let killedByTimer = false;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
+    const killTree = (signal: NodeJS.Signals) => {
+      if (child.pid) {
+        try {
+          process.kill(-child.pid, signal);
+        } catch {
+          try {
+            child.kill(signal);
+          } catch {
+            // already gone
+          }
+        }
+      }
+    };
     child.stdout?.on("data", (chunk: Buffer) => {
       output += chunk.toString("utf8");
     });
@@ -171,14 +185,8 @@ export async function runCaptured(
     });
     const timer = setTimeout(() => {
       killedByTimer = true;
-      child.kill("SIGTERM");
-      killTimer = setTimeout(() => {
-        try {
-          child.kill("SIGKILL");
-        } catch {
-          // already gone
-        }
-      }, 1000);
+      killTree("SIGTERM");
+      killTimer = setTimeout(() => killTree("SIGKILL"), 1000);
     }, timeoutMs);
     child.on("error", reject);
     child.on("close", (code, signal) => {

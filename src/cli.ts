@@ -453,4 +453,3 @@ if (invokedDirectly) {
 }
 
 export { main, HELP, VERSION };
-export type { CliInjects };

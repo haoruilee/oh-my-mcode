@@ -139,16 +139,20 @@ test("allowed npm test still runs as argv", async () => {
 test("runCaptured timeout is distinct from a generic exit 1 fail", async () => {
   const workspace = tmp("omm-sec-to-");
   writeFileSync(
-    path.join(workspace, "hang.test.js"),
-    'import { test } from "node:test";\ntest("hang", () => new Promise(() => {}));\n',
+    path.join(workspace, "package.json"),
+    JSON.stringify({
+      name: "timeout-fixture",
+      private: true,
+      scripts: { test: "node -e \"setTimeout(() => {}, 60000)\"" },
+    }),
   );
-  const result = await runCaptured("node --test", workspace, 150);
-  assert.equal(result.timedOut, true);
+  const result = await runCaptured("npm test", workspace, 250);
+  assert.equal(result.timedOut, true, result.output.slice(-500));
   assert.notEqual(result.exitCode, 0);
   const store = new RunStore(workspace);
-  const run = store.create("prove node --test passes");
-  const det = await runDeterministicVerify(store, run.run_id, workspace, 150);
-  assert.ok(det.findings.some((item) => item.class === "command_timeout"));
+  const run = store.create("prove npm test passes");
+  const det = await runDeterministicVerify(store, run.run_id, workspace, 250);
+  assert.ok(det.findings.some((item) => item.class === "command_timeout"), JSON.stringify(det.findings));
   assert.ok(!det.findings.some((item) => item.class === "command_failed"));
   assert.ok(FINDING_CLASSES.includes("command_timeout"));
 });
