@@ -68,7 +68,7 @@ MiniMax 生态里有三个不同的 CLI。用户安装步骤里不要混写：
 - 已有 `parseStreamLine` / `ExecResult`：`assistant` / `delta` / `tool` / `stderr` / `exec.result` / `usage` / `session`。
 - 仓库里没有 0.2.4 精确 `type` 字符串时的封闭别名：`goal` / `goal_settled` / `goal_budget`，以及只记录不行动的 `compaction` / `tool_trim` / `queue` / `steer`。`classifyHostEvent` 映射到 `session | usage | yield | goal | model | tool | noise`。
 - `extractStructuredExec` 只从 `exec.result` / `metadata` / 带类型的事件取 `{ sessionId, model, goal, usage }`，从不从 assistant 散文取。
-- Session 绑定：只接受来自 `exec.result` / `metadata` / session 类事件 / 宿主 `cursor` 的 `mvs_*`。不绑定 `YOUR SESSION ID:` 散文。用户 `--session` 仍优先。`omm_*` 仍不发送。`--session` XOR `--continue` 不变。
+- Session 绑定：只接受来自 `exec.result` / `metadata` / session 类事件 / 宿主 `cursor` 的 `mvs_*`。不绑定 `YOUR SESSION ID:` 散文。已删除散文刮取 leftover（`HOST_SESSION_REMINDER_RE` / `extractMvsSessionId`）。用户 `--session` 仍优先。`omm_*` 仍不发送。`--session` XOR `--continue` 不变。`plan` 之后 `resume` 沿同一 run_id 走向 Accept；`plan --run-id` 仍停在 PLAN_REVIEW。校验超时是 `timedOut` / `command_timeout`，不是泛化的 exit 1。失败的 host install 是 CLI 非零退出。HUD 在 `blocked` 停表。锁只能在持有者 pid 已死后偷。
 - `mcode --version` 解析成 `{ major, minor, patch }`。`hostCapabilities`：≥ 0.2.4 有 `structuredExec` / `outputSchemaDocumented`；0.2.1 有 `legacyOutputSchemaCrash`（exit 70）。`doctor` / `inspect model-policy` 报告这些旗标。没有 mcode 时 doctor 照实失败。
 - 结构化 goal 结算/预算可抄到 `RunRecord.host_goal` 并记 `host_event`。验收权仍是我们的 VERIFY / REPAIR / guard。
 

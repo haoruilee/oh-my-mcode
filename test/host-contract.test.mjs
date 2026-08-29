@@ -27,10 +27,10 @@ import {
 } from "../dist/mcode.js";
 import {
   extractHostSessionId,
-  extractMvsSessionId,
   isSynthesizedSessionToken,
   synthesizeSessionToken,
 } from "../dist/session.js";
+import { bindableHostSessionId } from "../dist/host-events.js";
 import {
   SNAPSHOT_STDERR_MAX,
   TINY_YIELD_FINDINGS_MAX,
@@ -263,8 +263,9 @@ test("extractHostSessionId binds mvs_ from cursor / exec.result, not YOUR SESSIO
   const events = lines.map((line) => parseStreamLine(line));
   const result = { text: collectAssistantText(events), events, exitCode: 0, rawLines: lines };
   assert.equal(extractHostSessionId(result), "mvs_e04430ddcafe");
-  assert.equal(extractMvsSessionId("sse1:session%3Amvs_0139ac61beef"), "mvs_0139ac61beef");
-  assert.equal(extractMvsSessionId("YOUR SESSION ID: mvs_e04430ddcafe"), "mvs_e04430ddcafe");
+  assert.equal(bindableHostSessionId("sse1:session%3Amvs_0139ac61beef"), "mvs_0139ac61beef");
+  assert.equal(bindableHostSessionId("YOUR SESSION ID: mvs_e04430ddcafe"), undefined);
+  assert.equal(bindableHostSessionId("mvs_e04430ddcafe"), "mvs_e04430ddcafe");
   assert.equal(isSynthesizedSessionToken(synthesizeSessionToken("run_ABC")), true);
   assert.equal(isSynthesizedSessionToken("mvs_e04430ddcafe"), false);
 

@@ -14,7 +14,29 @@ const PHASE_ORDER: Phase[] = [
   "RELEASE",
 ];
 
+function isHudBlocked(run: RunRecord): boolean {
+  return run.status === "blocked" || run.goal_state?.phase === "blocked";
+}
+
+function statusLabel(run: RunRecord): string {
+  if (isHudBlocked(run)) {
+    const code = run.goal_state?.blockedReason?.code;
+    return code ? `blocked (${code})` : "blocked";
+  }
+  return run.status === "active" ? "running" : run.status;
+}
+
+function hudShouldStop(run: RunRecord): boolean {
+  return (
+    run.status === "accepted" ||
+    run.status === "cancelled" ||
+    isHudBlocked(run) ||
+    run.phase === "RELEASE"
+  );
+}
+
 function markForRole(role: Role, run: RunRecord, tasks: TaskGraph): string {
+  if ((role === "builder" || role === "verifier") && isHudBlocked(run)) return "…";
   const roleTasks = tasks.tasks.filter((task) => task.role === role);
   if (roleTasks.some((task) => task.status === "in_progress")) return "◉";
   if (roleTasks.length > 0 && roleTasks.every((task) => task.status === "done")) return "✓";
@@ -60,7 +82,7 @@ export function loadHud(store: RunStore, runId: string, maxRepairs = 3): HudMode
 
 export function renderHud(model: HudModel): string {
   const { run, tasks, events, evidenceCount, maxRepairs } = model;
-  const status = run.status === "active" ? "running" : run.status;
+  const status = statusLabel(run);
   const explorer = markForRole("explorer", run, tasks);
   const planner = markForRole("planner", run, tasks);
   const builder = markForRole("builder", run, tasks);
@@ -104,6 +126,7 @@ export async function watchHud(
   const write = opts.write || ((text) => process.stdout.write(`${text}\n`));
   const intervalMs = opts.intervalMs ?? 1000;
   write(attachHud(store, runId, opts.maxRepairs));
+  if (hudShouldStop(store.load(runId))) return;
   await new Promise<void>((resolve) => {
     const timer = setInterval(() => {
       if (opts.signal?.aborted) {
@@ -113,7 +136,7 @@ export async function watchHud(
       }
       write(renderHud(loadHud(store, runId, opts.maxRepairs)));
       const run = store.load(runId);
-      if (run.status === "accepted" || run.status === "cancelled" || run.phase === "RELEASE") {
+      if (hudShouldStop(run)) {
         clearInterval(timer);
         resolve();
       }

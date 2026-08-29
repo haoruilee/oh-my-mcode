@@ -223,15 +223,41 @@ function writeJson(filePath, value) {
   writeAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+const LOCK_STALE_FALLBACK_MS = 10 * 60 * 1000;
+
+function lockHolderPid(lockPath) {
+  try {
+    const raw = readFileSync(lockPath, "utf8").trim().split(/\s+/, 1)[0];
+    if (!raw || !/^\d+$/.test(raw)) return undefined;
+    const pid = Number.parseInt(raw, 10);
+    return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function pidIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error && error.code !== "ESRCH";
+  }
+}
+
+function canStealLock(lockPath) {
+  const pid = lockHolderPid(lockPath);
+  if (pid !== undefined) return !pidIsAlive(pid);
+  const ageMs = Date.now() - statSync(lockPath).mtimeMs;
+  return ageMs >= LOCK_STALE_FALLBACK_MS;
+}
+
 function withLock(dir, fn) {
   mkdirSync(dir, { recursive: true });
   const lockPath = path.join(dir, ".lock");
   unlinkIfSymlink(lockPath);
   if (existsSync(lockPath)) {
-    const ageMs = Date.now() - statSync(lockPath).mtimeMs;
-    if (ageMs < 30_000) {
-      fail(`run directory is locked: ${lockPath}`);
-    }
+    if (!canStealLock(lockPath)) fail(`run directory is locked: ${lockPath}`);
     rmSync(lockPath);
   }
   writeFileSync(lockPath, `${process.pid}\n`);

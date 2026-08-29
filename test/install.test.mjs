@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { main } from "../dist/cli.js";
 import { install, installPlugin, OFFICIAL_HOST_PACKAGE } from "../dist/install.js";
 
 function tmp(prefix = "omm-ins-") {
@@ -68,6 +69,7 @@ test("host present: install writes plugin and does not invoke host installer", a
       assert.equal(hostCalls, 0);
       assert.equal(result.host_install_attempted, false);
       assert.equal(result.host_installed, false);
+      assert.equal(result.ok, true);
       assert.equal(result.plugin_installed, true);
       assert.ok(existsSync(path.join(result.dest, "plugin.json")));
       assert.match(cap.logs.join(""), /Confirm on mcode 0\.2\.7\+/);
@@ -146,6 +148,7 @@ test("failed host install is honest and still drops the plugin", async () => {
       });
       assert.equal(result.host_install_attempted, true);
       assert.equal(result.host_installed, false);
+      assert.equal(result.ok, false);
       assert.match(result.host_error || "", /network down/);
       assert.equal(result.plugin_installed, true);
       assert.ok(existsSync(path.join(result.dest, "plugin.json")));
@@ -153,6 +156,50 @@ test("failed host install is honest and still drops the plugin", async () => {
       assert.match(cap.logs.join(""), /plugin-only/);
     } finally {
       cap.restore();
+    }
+  });
+});
+
+test("cli install exits non-zero when injected host installer fails", async () => {
+  await withInstallEnv(async () => {
+    const origOut = process.stdout.write.bind(process.stdout);
+    const origErr = process.stderr.write.bind(process.stderr);
+    process.stdout.write = () => true;
+    process.stderr.write = () => true;
+    try {
+      const code = await main(["install", "--yes"], {
+        mcodeExists: () => false,
+        installHost: () => ({
+          ok: false,
+          command: `npm install -g ${OFFICIAL_HOST_PACKAGE}`,
+          error: "network down",
+        }),
+      });
+      assert.equal(code, 2);
+    } finally {
+      process.stdout.write = origOut;
+      process.stderr.write = origErr;
+    }
+  });
+});
+
+test("cli install --skip-host stays exit 0 (plugin-only)", async () => {
+  await withInstallEnv(async () => {
+    const origOut = process.stdout.write.bind(process.stdout);
+    const origErr = process.stderr.write.bind(process.stderr);
+    process.stdout.write = () => true;
+    process.stderr.write = () => true;
+    try {
+      const code = await main(["install", "--yes", "--skip-host"], {
+        mcodeExists: () => false,
+        installHost: () => {
+          throw new Error("must not hit the registry");
+        },
+      });
+      assert.equal(code, 0);
+    } finally {
+      process.stdout.write = origOut;
+      process.stderr.write = origErr;
     }
   });
 });

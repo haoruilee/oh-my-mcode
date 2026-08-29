@@ -29,29 +29,6 @@ export function isSynthesizedSessionToken(id: string): boolean {
   return id.startsWith("omm_run_") || id.startsWith("omm_");
 }
 
-/** Live 0.2.1 host session ids look like `mvs_<hex>`. */
-export const HOST_SESSION_ID_RE = /\bmvs_[A-Za-z0-9]+\b/;
-export const HOST_SESSION_REMINDER_RE = /YOUR SESSION ID:\s*(mvs_[A-Za-z0-9]+)/i;
-
-export function decodeHostCursor(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-export function extractMvsSessionId(text: string): string | undefined {
-  const decoded = decodeHostCursor(text);
-  const reminder = decoded.match(HOST_SESSION_REMINDER_RE);
-  if (reminder?.[1] && !isSynthesizedSessionToken(reminder[1])) return reminder[1];
-  const fromCursor = decoded.match(/(?:sse1:)?session(?::|%3A)(mvs_[A-Za-z0-9]+)/i);
-  if (fromCursor?.[1] && !isSynthesizedSessionToken(fromCursor[1])) return fromCursor[1];
-  const found = decoded.match(HOST_SESSION_ID_RE);
-  if (found?.[0] && !isSynthesizedSessionToken(found[0])) return found[0];
-  return undefined;
-}
-
 /**
  * Bind a host session id from structured fields only (`exec.result` / `metadata` /
  * session-like events / host `cursor`). Never from `result.text`, assistant

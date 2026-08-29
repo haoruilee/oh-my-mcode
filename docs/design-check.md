@@ -356,3 +356,16 @@ Official CLI changelog through **0.2.7** (2026-08-28). 0.2.4 added structured `m
 6. **Host honesty?** **Pass, enforced.** `--output-schema` is documented since 0.2.4; we omit it until a live rematch proves it is not exit 70 (`OMM_HOST_OUTPUT_SCHEMA=1` remains the probe). Doctor text says so. Missing `mcode` still fails doctor. Version parser is injectable (no live binary in CI). Host ceilings (17–20k input tax, Node 24 sqlite abort) stay unless new evidence.
 7. **Hero stays `max`?** Yes. Event classify / session bind / version flags are implementation details of workers inside `max` / `plan` / `doctor`.
 8. **Codex-as-platform fit?** Typed stream events are harness concerns. EQ can record `host_event`. We did not add a host Goal loop, Hashline, hooks, `/max`, or npm publish.
+
+## 28. Honesty leftovers after #20–#23 (`resume` / install exit / HUD / lock / verify timeout / no prose session scrape)
+
+Leftovers called out after goal-acceptance, guard-block, and structured-exec cuts. We stay a verified-delivery harness on `mcode exec`.
+
+1. **Verified delivery?** Yes — `plan` then `resume` continues the same run toward Accept (verifier + evidence). `plan` / `plan --run-id` still stop at PLAN_REVIEW. Guard-blocked runs still refuse. A verify timeout is `command_timeout`, not a generic `command_failed` exit 1. Failed host install is exit 2 (plugin may still drop). HUD says `blocked (<code>)` and does not claim Accept.
+2. **Harness not prompt pack?** Yes — `runResume`, install CLI exit, HUD stop, `rememberOptions`, `withLock`, `runCaptured.timedOut`, and session bind live in TypeScript. Role files unchanged. No new SKILL.
+3. **One core, many surfaces?** CLI `resume` / `plan` / `install` / `attach --watch` share the same TypeScript. TUI `scripts/run-store.mjs` lock steal matches `RunStore.withLock`. MCP did not grow a second Goal loop.
+4. **Subagents are workers not trees?** Unchanged. Five roles. One exec each. Resume does not spawn grandchildren. Guard-blocked resume still spawns zero.
+5. **MiniMax-native?** Yes — we stay the harness on `mcode`. Hero stays `oh-my-mcode max`. No ACP, Desktop Goal, Hooks, marketplace listing, or `--output-schema` by default.
+6. **Host honesty?** **Pass, enforced.** Session bind stays structured-only; `YOUR SESSION ID:` prose scrape is deleted (`bindableHostSessionId` / `extractStructuredExec` only). `rememberOptions` patches `max_repairs` and leaves `goal_state` (revision + `maxRounds`) alone. Lock steal requires a dead holder pid (`process.kill(pid, 0)` ESRCH); live pid is still locked after 30s; unreadable pid uses a 10-minute stale fallback. `unlinkIfSymlink` still runs before following. `runCaptured.timedOut` is independent of `exitCode`. Install CLI is no longer always 0.
+7. **Hero stays `max`?** Yes. Resume-toward-Accept is how `plan` hands off to the hero loop. Install / HUD / lock / verify timeout are power-tool honesty.
+8. **Codex-as-platform fit?** Resume is continue-the-thread, not a new goal. Guard block remains the approval failure. No live `mcode` in CI. No second Goal runtime.

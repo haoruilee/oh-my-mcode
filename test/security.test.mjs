@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import {
   existsSync,
   lstatSync,
@@ -7,6 +8,7 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -131,6 +133,68 @@ test("allowed npm test still runs as argv", async () => {
   const result = await runCaptured("npm test", workspace);
   assert.notEqual(result.exitCode, undefined);
   assert.match(result.output, /\$ npm test/);
+  assert.equal(result.timedOut, undefined);
+});
+
+test("runCaptured timeout is distinct from a generic exit 1 fail", async () => {
+  const workspace = tmp("omm-sec-to-");
+  writeFileSync(
+    path.join(workspace, "package.json"),
+    JSON.stringify({
+      name: "timeout-fixture",
+      private: true,
+      scripts: { test: "node -e \"setTimeout(() => {}, 60000)\"" },
+    }),
+  );
+  const result = await runCaptured("npm test", workspace, 250);
+  assert.equal(result.timedOut, true, result.output.slice(-500));
+  assert.notEqual(result.exitCode, 0);
+  const store = new RunStore(workspace);
+  const run = store.create("prove npm test passes");
+  const det = await runDeterministicVerify(store, run.run_id, workspace, 250);
+  assert.ok(det.findings.some((item) => item.class === "command_timeout"), JSON.stringify(det.findings));
+  assert.ok(!det.findings.some((item) => item.class === "command_failed"));
+  assert.ok(FINDING_CLASSES.includes("command_timeout"));
+});
+
+function deadPid() {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ["-e", "process.exit(0)"], { stdio: "ignore" });
+    const pid = child.pid;
+    if (!pid) {
+      reject(new Error("spawn produced no pid"));
+      return;
+    }
+    child.on("exit", () => resolve(pid));
+    child.on("error", reject);
+  });
+}
+
+test("withLock does not steal a lock held by a live pid even if the file is old", () => {
+  const workspace = tmp("omm-sec-lock-live-");
+  const store = new RunStore(workspace);
+  const run = store.create("live lock holder");
+  const lockPath = path.join(store.dir(run.run_id), ".lock");
+  writeFileSync(lockPath, `${process.pid}\n`);
+  const ancient = new Date(Date.now() - 60 * 60 * 1000);
+  utimesSync(lockPath, ancient, ancient);
+  assert.throws(
+    () => store.withLock(run.run_id, () => "stolen"),
+    (error) => error instanceof CliError && /run directory is locked/.test(error.message),
+  );
+  assert.ok(existsSync(lockPath));
+  assert.equal(readFileSync(lockPath, "utf8").trim(), String(process.pid));
+});
+
+test("withLock steals a lock whose holder pid is dead", async () => {
+  const workspace = tmp("omm-sec-lock-dead-");
+  const store = new RunStore(workspace);
+  const run = store.create("dead lock holder");
+  const lockPath = path.join(store.dir(run.run_id), ".lock");
+  const pid = await deadPid();
+  writeFileSync(lockPath, `${pid}\n`);
+  const result = store.withLock(run.run_id, () => "stolen");
+  assert.equal(result, "stolen");
 });
 
 test("planner cannot invent a verify command when goal+workspace have none", () => {

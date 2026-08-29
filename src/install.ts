@@ -66,6 +66,13 @@ export interface InstallResult {
   host_present_after: boolean;
   plugin_installed: boolean;
   host_error?: string;
+  /** False when a host install was attempted and failed (plugin may still be dropped). */
+  ok: boolean;
+}
+
+function finishInstall(result: Omit<InstallResult, "ok">): InstallResult {
+  const hostFailed = Boolean(result.host_error) || (result.host_install_attempted && !result.host_installed);
+  return { ...result, ok: !hostFailed };
 }
 
 /**
@@ -173,7 +180,7 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
   })) {
     log("stdin is not a TTY; skipping host install (plugin-only). Pass --yes to install the host.");
     const plugin = installPlugin({ yes: opts.yes });
-    return {
+    return finishInstall({
       dest: plugin.dest,
       packageRoot: plugin.packageRoot,
       yes: plugin.yes,
@@ -183,7 +190,7 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
       host_installed: false,
       host_present_after: exists(),
       plugin_installed: true,
-    };
+    });
   }
 
   if (!presentBefore && !skipHost) {
@@ -195,7 +202,7 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
       if (!ok) {
         log("Host install declined. Continuing with plugin-only (--skip-host).");
         const plugin = installPlugin({ yes: opts.yes });
-        return {
+        return finishInstall({
           dest: plugin.dest,
           packageRoot: plugin.packageRoot,
           yes: plugin.yes,
@@ -205,7 +212,7 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
           host_installed: false,
           host_present_after: exists(),
           plugin_installed: true,
-        };
+        });
       }
     }
     hostInstallAttempted = true;
@@ -227,7 +234,7 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
   }
 
   const plugin = installPlugin({ yes: opts.yes });
-  return {
+  return finishInstall({
     dest: plugin.dest,
     packageRoot: plugin.packageRoot,
     yes: plugin.yes,
@@ -238,5 +245,5 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
     host_present_after: exists(),
     plugin_installed: true,
     ...(hostError ? { host_error: hostError } : {}),
-  };
+  });
 }

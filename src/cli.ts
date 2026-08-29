@@ -3,7 +3,7 @@ import { CliError, McodeMissingError, log } from "./util.js";
 import { RunStore } from "./store.js";
 import { runDoctor, formatDoctor } from "./doctor.js";
 import { formatTps, runDoctorTps } from "./tps.js";
-import { install } from "./install.js";
+import { install, type HostInstaller } from "./install.js";
 import { runMax, runPlan, runResume, runTeam } from "./orchestrator.js";
 import { PERMISSIONS, type Permission } from "./types.js";
 import { applyFlagOverrides, loadConfig } from "./config.js";
@@ -27,7 +27,7 @@ Commands:
   max <goal>         Full loop to Accepted evidence
   plan <goal>        Discover + plan + review (no product edits)
   verify [run_id]    Independent acceptance (deterministic first)
-  resume [run_id]    Continue a saved run from its phase
+  resume [run_id]    Continue a saved run toward Accept (same run_id)
   review [run_id]    Read-only review of diff + evidence (cannot Accept)
   ship [run_id]      Release notes + git/PR commands (Accepted only)
   research <topic>   DISCOVER-only research note (no builder)
@@ -229,7 +229,12 @@ function print(value: unknown, asJson: boolean): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
-async function main(argv = process.argv.slice(2)): Promise<number> {
+export interface CliInjects {
+  installHost?: HostInstaller;
+  mcodeExists?: () => boolean;
+}
+
+async function main(argv = process.argv.slice(2), injects: CliInjects = {}): Promise<number> {
   const flags = parseArgv(argv);
   if (flags.version) {
     process.stdout.write(`${VERSION}\n`);
@@ -281,9 +286,14 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
   }
 
   if (command === "install") {
-    const result = await install({ yes: Boolean(flags.yes), skipHost: Boolean(flags["skip-host"]) });
+    const result = await install({
+      yes: Boolean(flags.yes),
+      skipHost: Boolean(flags["skip-host"]),
+      ...(injects.mcodeExists ? { mcodeExists: injects.mcodeExists } : {}),
+      ...(injects.installHost ? { installHost: injects.installHost } : {}),
+    });
     print(result, Boolean(flags.json));
-    return 0;
+    return result.ok ? 0 : 2;
   }
 
   const harness = createHarness(workspace);
