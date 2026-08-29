@@ -46,6 +46,36 @@ import {
   type GoalOperation,
 } from "./goal.js";
 
+const LOCK_STALE_FALLBACK_MS = 10 * 60 * 1000;
+
+function lockHolderPid(lockPath: string): number | undefined {
+  try {
+    const raw = readFileSync(lockPath, "utf8").trim().split(/\s+/, 1)[0];
+    if (!raw || !/^\d+$/.test(raw)) return undefined;
+    const pid = Number.parseInt(raw, 10);
+    return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function pidIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+/** Steal only if the holder pid is dead. Unreadable pid uses a 10-minute stale fallback. */
+function canStealLock(lockPath: string): boolean {
+  const pid = lockHolderPid(lockPath);
+  if (pid !== undefined) return !pidIsAlive(pid);
+  const ageMs = Date.now() - statSync(lockPath).mtimeMs;
+  return ageMs >= LOCK_STALE_FALLBACK_MS;
+}
+
 function nextEvidenceId(items: EvidenceRecord[]): string {
   let max = 0;
   for (const item of items) {
@@ -215,8 +245,7 @@ export class RunStore {
     const lockPath = path.join(dir, ".lock");
     unlinkIfSymlink(lockPath);
     if (existsSync(lockPath)) {
-      const ageMs = Date.now() - statSync(lockPath).mtimeMs;
-      if (ageMs < 30_000) throw new CliError(`run directory is locked: ${lockPath}`);
+      if (!canStealLock(lockPath)) throw new CliError(`run directory is locked: ${lockPath}`);
       rmSync(lockPath);
     }
     writeFileSync(lockPath, `${process.pid}\n`);

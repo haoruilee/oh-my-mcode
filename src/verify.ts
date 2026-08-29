@@ -136,11 +136,19 @@ export function cleanSpawnEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.Pro
   return env;
 }
 
+export interface CapturedCommandResult {
+  exitCode: number;
+  output: string;
+  /** Our timer fired (and/or the close signal is SIGTERM from that timer). */
+  timedOut?: boolean;
+  signal?: string;
+}
+
 export async function runCaptured(
   command: string,
   cwd: string,
   timeoutMs = 10 * 60 * 1000,
-): Promise<{ exitCode: number; output: string }> {
+): Promise<CapturedCommandResult> {
   const argv = verifyCommandArgv(command);
   if (!argv) {
     throw new CliError(`refused verify command (not on allowlist): ${command}`);
@@ -153,17 +161,35 @@ export async function runCaptured(
       stdio: ["ignore", "pipe", "pipe"],
     });
     let output = `$ ${argv.join(" ")}\n`;
+    let killedByTimer = false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
     child.stdout?.on("data", (chunk: Buffer) => {
       output += chunk.toString("utf8");
     });
     child.stderr?.on("data", (chunk: Buffer) => {
       output += chunk.toString("utf8");
     });
-    const timer = setTimeout(() => child.kill("SIGTERM"), timeoutMs);
+    const timer = setTimeout(() => {
+      killedByTimer = true;
+      child.kill("SIGTERM");
+      killTimer = setTimeout(() => {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // already gone
+        }
+      }, 1000);
+    }, timeoutMs);
     child.on("error", reject);
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       clearTimeout(timer);
-      resolve({ exitCode: code ?? 1, output });
+      if (killTimer) clearTimeout(killTimer);
+      resolve({
+        exitCode: code ?? 1,
+        output,
+        ...(killedByTimer ? { timedOut: true } : {}),
+        ...(signal ? { signal: String(signal) } : {}),
+      });
     });
   });
 }
@@ -178,6 +204,7 @@ export async function runDeterministicVerify(
   store: RunStore,
   runId: string,
   workspace: string,
+  timeoutMs?: number,
 ): Promise<DeterministicResult> {
   const tasks = store.loadTasks(runId);
   const run = store.load(runId);
@@ -253,14 +280,15 @@ export async function runDeterministicVerify(
       continue;
     }
     commands.push(row.command);
-    const result = await runCaptured(row.command, workspace);
+    const result = await runCaptured(row.command, workspace, timeoutMs);
     const rel = `${id}-${row.kind}.log`;
     store.writeTextEvidence(runId, row.kind === "build" ? "command" : "test", rel, result.output, {
       command: row.command,
       exit_code: result.exitCode,
+      notes: result.timedOut ? "verify command timed out" : undefined,
     });
     writtenEvidence.push(`evidence/${rel}`);
-    const pass = result.exitCode === 0;
+    const pass = result.exitCode === 0 && !result.timedOut;
     acceptance.push({
       id,
       criterion: row.item?.criterion || `Command succeeds: ${row.command}`,
@@ -270,14 +298,17 @@ export async function runDeterministicVerify(
       evidence: [`evidence/${rel}`],
     });
     if (!pass) {
-      const title = `Command failed: ${row.command}`;
+      const timedOut = Boolean(result.timedOut);
+      const title = timedOut ? `Command timed out: ${row.command}` : `Command failed: ${row.command}`;
       findings.push({
         id: `F${findings.length + 1}`,
         severity: "blocker",
         title,
-        detail: result.output.slice(-4000),
+        detail: timedOut
+          ? `verify timer fired before the command exited (not a generic exit 1)\n${result.output.slice(-4000)}`
+          : result.output.slice(-4000),
         evidence: [`evidence/${rel}`],
-        class: "command_failed",
+        class: timedOut ? "command_timeout" : "command_failed",
       });
     }
   }

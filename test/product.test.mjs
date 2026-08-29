@@ -12,7 +12,7 @@ import { StubMcode } from "../dist/mcode.js";
 import { RunStore } from "../dist/store.js";
 import { CliError } from "../dist/util.js";
 import { main } from "../dist/cli.js";
-import { attachHud, renderHud, loadHud } from "../dist/hud.js";
+import { attachHud, renderHud, loadHud, watchHud } from "../dist/hud.js";
 import { inspectSkills, runInspect } from "../dist/inspect.js";
 import { readyBuilders } from "../dist/team.js";
 import { plannerYield, yieldResult } from "./helpers/yield.mjs";
@@ -78,6 +78,26 @@ test("research does not edit (no builder)", async () => {
   const store = new RunStore(workspace);
   assert.ok(store.readArtifact(run.run_id, "research.md").includes("No builder"));
   assert.ok(store.loadEvents(run.run_id).some((e) => e.type === "research_completed"));
+});
+
+test("HUD is honest on a blocked run and watchHud stops", async () => {
+  const workspace = project();
+  const store = new RunStore(workspace);
+  const run = store.create("blocked hud");
+  store.blockGoal(run.run_id, 1, { code: "repeat-finding", message: "repeated failure signature" });
+  store.setPhase(run.run_id, "REPAIR", "blocked");
+  const hud = renderHud(loadHud(store, run.run_id));
+  assert.match(hud, /blocked \(repeat-finding\)/);
+  assert.doesNotMatch(hud, /accepted/i);
+  assert.doesNotMatch(hud, /Verifier ✓/);
+  assert.doesNotMatch(hud, /Builder ✓/);
+  const frames = [];
+  await watchHud(store, run.run_id, {
+    intervalMs: 20,
+    write: (text) => frames.push(text),
+  });
+  assert.ok(frames.length >= 1);
+  assert.match(frames[0], /blocked \(repeat-finding\)/);
 });
 
 test("attach/status render without mcode", async () => {

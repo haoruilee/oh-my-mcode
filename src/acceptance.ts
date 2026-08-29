@@ -178,6 +178,7 @@ export function classifyFinding(input: { title: string; hostCrash?: boolean }): 
   if (input.hostCrash) return "host_crash";
   if (/^No automated test\/build command detected/i.test(input.title)) return "no_test";
   if (/^Command refused:/i.test(input.title)) return "command_refused";
+  if (/^Command timed out:/i.test(input.title)) return "command_timeout";
   if (/^Command failed:/i.test(input.title)) return "command_failed";
   if (/^Stale content hash:/i.test(input.title)) return "stale_workspace";
   return undefined;

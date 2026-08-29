@@ -224,16 +224,78 @@ test("resume continues a PLAN_REVIEW run without starting a new goal", async () 
     workspace,
     goal: "original goal",
     mcode: stubFromFake(),
+    llmVerify: false,
+  });
+  assert.equal(planned.phase, "PLAN_REVIEW");
+  let execs = 0;
+  let builderExecs = 0;
+  const counting = new StubMcode(async (req) => {
+    execs += 1;
+    if (req.role === "builder") builderExecs += 1;
+    return stubFromFake().exec(req);
   });
   const resumed = await runResume({
     workspace,
     runId: planned.run_id,
-    mcode: stubFromFake(),
+    mcode: counting,
+    llmVerify: false,
   });
   assert.equal(resumed.run_id, planned.run_id);
   assert.equal(resumed.goal, "original goal");
+  assert.notEqual(resumed.phase, "PLAN_REVIEW");
+  assert.ok(
+    ["EXECUTE", "VERIFY", "REPAIR", "ACCEPT", "RELEASE"].includes(resumed.phase) ||
+      resumed.status === "accepted",
+    `resume stayed a no-op at ${resumed.phase}/${resumed.status}`,
+  );
+  assert.ok(execs > 0, "resume must spawn a host exec after PLAN_REVIEW");
+  assert.ok(builderExecs > 0, "resume must run a builder/EXECUTE exec");
   const store = new RunStore(workspace);
   assert.ok(store.loadEvents(planned.run_id).some((e) => e.type === "run_resumed"));
+  assert.ok(
+    store.loadEvents(planned.run_id).some((e) => e.type === "task_started" || e.phase === "EXECUTE"),
+  );
+});
+
+test("plan --run-id stays at PLAN_REVIEW and does not Accept", async () => {
+  const workspace = project();
+  const planned = await runPlan({
+    workspace,
+    goal: "stay planned",
+    mcode: stubFromFake(),
+    llmVerify: false,
+  });
+  const again = await runPlan({
+    workspace,
+    runId: planned.run_id,
+    goal: "stay planned",
+    mcode: stubFromFake(),
+    llmVerify: false,
+  });
+  assert.equal(again.run_id, planned.run_id);
+  assert.equal(again.goal, "stay planned");
+  assert.equal(again.phase, "PLAN_REVIEW");
+  assert.notEqual(again.status, "accepted");
+});
+
+test("remembering --max-repairs does not rewrite goal_state revision", async () => {
+  const workspace = project();
+  const store = new RunStore(workspace);
+  const created = store.create("keep goal snapshot", { maxRepairs: 3 });
+  assert.equal(created.goal_state?.revision, 1);
+  assert.equal(created.goal_state?.maxRounds, 3);
+  store.setPhase(created.run_id, "ACCEPT");
+  const resumed = await runResume({
+    workspace,
+    runId: created.run_id,
+    maxRepairs: 8,
+    mcode: stubFromFake(),
+    llmVerify: false,
+  });
+  assert.equal(resumed.goal_state?.revision, created.goal_state?.revision);
+  assert.equal(resumed.max_repairs, 8);
+  assert.equal(resumed.goal_state?.maxRounds, 3);
+  assert.equal(resumed.goal, "keep goal snapshot");
 });
 
 test("cli --help lists hero commands", async () => {

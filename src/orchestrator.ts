@@ -390,17 +390,11 @@ export async function requireClient(opts: OrchestratorOptions, store: RunStore, 
 
 function rememberOptions(store: RunStore, runId: string, opts: OrchestratorOptions): void {
   const max_repairs = opts.maxRepairs ?? 3;
-  const current = store.load(runId);
-  const goal_state =
-    current.goal_state && current.goal_state.maxRounds !== max_repairs
-      ? { ...current.goal_state, maxRounds: max_repairs }
-      : undefined;
   store.patchRun(runId, {
     max_repairs,
     ralph: Boolean(opts.ralph),
     team: Boolean(opts.team),
     workflow: opts.workflow || (opts.team ? "team" : "max"),
-    ...(goal_state ? { goal_state } : {}),
   });
 }
 
@@ -476,6 +470,7 @@ export async function runResume(opts: OrchestratorOptions): Promise<RunRecord> {
   const run = store.load(runId);
   const blocked = refuseIfBlocked(opts, run);
   if (blocked) return blocked;
+  rememberOptions(store, runId, opts);
   store.appendEvent(runId, "run_resumed", { from_phase: run.phase, goal: run.goal });
   emit(opts, `resuming ${runId} from ${run.phase}`);
   if (run.phase === "ACCEPT" || run.phase === "RELEASE") {
@@ -488,9 +483,7 @@ export async function runResume(opts: OrchestratorOptions): Promise<RunRecord> {
   }
   applyRequestedSession(store, runId, opts);
   const client = await requireClient(opts, store, runId);
-  const plannedOnly = run.phase === "PLAN" || run.phase === "PLAN_REVIEW";
-  const stopAfter = plannedOnly && !opts.ralph ? "PLAN_REVIEW" : "ACCEPT";
-  return drive(store, client, runId, opts, { stopAfter, resumeFrom: run.phase });
+  return drive(store, client, runId, opts, { stopAfter: "ACCEPT", resumeFrom: run.phase });
 }
 
 async function verifyWorktreeSlice(workspace: string): Promise<boolean> {
@@ -498,7 +491,7 @@ async function verifyWorktreeSlice(workspace: string): Promise<boolean> {
   const command = detected.test || detected.build;
   if (!command) return true;
   const result = await runCaptured(command, workspace);
-  return result.exitCode === 0;
+  return result.exitCode === 0 && !result.timedOut;
 }
 
 async function executeOneBuilder(
@@ -710,7 +703,7 @@ async function drive(
     const fingerprint = findingFingerprint(findings);
     const current = store.load(runId);
     const repairsIncludingThis = (current.repair_count || 0) + 1;
-    const maxRounds = current.goal_state?.maxRounds ?? current.max_repairs ?? maxRepairs;
+    const maxRounds = current.max_repairs ?? current.goal_state?.maxRounds ?? maxRepairs;
     const decision = decideRepair({
       fingerprint,
       lastFingerprint: current.last_failure_signature,
